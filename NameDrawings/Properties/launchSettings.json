@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "Revit24": {
+      "commandName": "Executable",
+      "executablePath": "E:\\Autodesk\\Revit 2024\\Revit.exe"
+    },
+    "EliteSheets": {
+      "commandName": "Project"
+    },
+    "RevitWork": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files\\Autodesk\\Revit 2024\\Revit.exe"
+    }
+  }
+}

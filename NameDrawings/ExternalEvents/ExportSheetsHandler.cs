@@ -163,22 +163,58 @@ namespace EliteSheets.ExternalEvents
             return group.Length > 0;
         }
 
-        // "<prefix>-7-<group>" where prefix is everything BEFORE "-7-"
-        // Also trims any trailing underscores from prefix.
-        private static string BuildCombinedFileName(string sheetNumber, string groupNumber)
+        // "<prefix>-7-<group>_<title>" where:
+        // prefix = everything BEFORE "-7-"
+        // group  = digits after "-7-"
+        // title  = text after the first "_" following the group, without the trailing "--N"
+        private static string BuildCombinedFileName(string sheetNumber, string fallbackGroupNumber)
         {
             if (string.IsNullOrWhiteSpace(sheetNumber))
-                return $"Group-{groupNumber}";
+                return $"Group-{fallbackGroupNumber}";
 
+            string prefix, group, title;
+            if (TryParseParts(sheetNumber, out prefix, out group, out title))
+                return $"{prefix}-7-{group}_{title}";
+
+            // Fallback to previous behavior if parsing fails
             var normalized = sheetNumber.Replace('–', '-').Replace('—', '-');
             int p7 = normalized.IndexOf("-7-", StringComparison.Ordinal);
             if (p7 > 0)
             {
-                string prefix = normalized.Substring(0, p7).TrimEnd('_', '-', ' ');
-                return $"{prefix}-7-{groupNumber}";
+                string cleanPrefix = normalized.Substring(0, p7).TrimEnd('_', '-', ' ');
+                return $"{cleanPrefix}-7-{fallbackGroupNumber}";
             }
-            return $"Group-{groupNumber}";
+            return $"Group-{fallbackGroupNumber}";
         }
+
+        // Parses: "<prefix>-7-<group>_<title>[--N]" (dashes can be en/em)
+        // Returns false if the pattern doesn’t match.
+        private static bool TryParseParts(string sheetNumber, out string prefix, out string group, out string title)
+        {
+            prefix = group = title = null;
+            if (string.IsNullOrWhiteSpace(sheetNumber)) return false;
+
+            var normalized = sheetNumber.Replace('–', '-').Replace('—', '-');
+
+            // ^(prefix)-7-(group)_(title)(--N)?$
+            var m = Regex.Match(
+                normalized,
+                @"^(?<prefix>.+?)-7-\s*(?<group>\d+)\s*_(?<title>.+?)(?:--\s*\d+\s*)?$",
+                RegexOptions.CultureInvariant);
+
+            if (!m.Success) return false;
+
+            prefix = m.Groups["prefix"].Value.TrimEnd('_', '-', ' ');
+            group = m.Groups["group"].Value.Trim();
+            title = m.Groups["title"].Value.Trim();
+
+            // Defensive: avoid illegal filename chars if they ever appear in the title
+            foreach (var c in Path.GetInvalidFileNameChars())
+                title = title.Replace(c.ToString(), "");
+
+            return prefix.Length > 0 && group.Length > 0 && title.Length > 0;
+        }
+
         private void ShowCompletionDialog(bool anySuccess)
         {
             if (anySuccess)

@@ -6,6 +6,8 @@
 			MaterialDesignColors
 			Newtonsoft.Json
 			Microsoft.Xaml.Behaviors
+			Microsoft.WindowsAPICodePack
+			Microsoft.WindowsAPICodePack.Shell
 			ricaun.Revit.UI.0.7.1
 		</IncludeAssemblies>
 		<PreloadOrder>

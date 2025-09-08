@@ -220,7 +220,7 @@
                             <DataGridTextColumn
                                 Width="*"
                                 Binding="{Binding Number}"
-                                Header="Sheet Number"
+                                Header="Joonise Number"
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle}"
                                 IsReadOnly="True" />
 
@@ -228,7 +228,16 @@
                             <DataGridTextColumn
                                 Width="*"
                                 Binding="{Binding Name}"
-                                Header="Sheet Name"
+                                Header="Joonise nimi"
+                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
+                                IsReadOnly="True" />
+
+                            <!--  Versioon (NEW)  -->
+                            <DataGridTextColumn
+                                Width="75"
+                                Binding="{Binding Version}"
+                                ElementStyle="{StaticResource CenterAlignedCellStyle}"
+                                Header="Versioon"
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle}"
                                 IsReadOnly="True" />
 
@@ -237,7 +246,7 @@
                                 Width="75"
                                 Binding="{Binding SheetSize}"
                                 ElementStyle="{StaticResource CenterAlignedCellStyle}"
-                                Header="Size"
+                                Header="Suurus"
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle_NoRightBorder}"
                                 IsReadOnly="True" />
 

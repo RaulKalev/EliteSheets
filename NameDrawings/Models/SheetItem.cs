@@ -9,6 +9,8 @@ namespace EliteSheets.Models
         private string _name;
         private string _number;
         private string _viewName;
+        public string Version { get; set; }
+
         public ElementId Id { get; set; }
 
         public string Name

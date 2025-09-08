@@ -220,8 +220,8 @@ namespace EliteSheets.ExternalEvents
             if (anySuccess)
             {
                 TaskDialogResult result = TaskDialog.Show(
-                    "Export Complete",
-                    "Export completed.\n\nOpen export folder?",
+                    "Export lõppenud.",
+                    "Export lõppenud.\n\nAvada ekspordi kaust?",
                     TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
                     TaskDialogResult.No);
 

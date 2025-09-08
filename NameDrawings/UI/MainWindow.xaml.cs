@@ -315,7 +315,7 @@ namespace EliteSheets
                     IsChecked = false
                 };
 
-                // size label
+                // size label (existing)
                 var outline = sheet.Outline;
                 if (outline != null)
                 {
@@ -328,7 +328,30 @@ namespace EliteSheets
                     item.SheetSize = "Unknown";
                 }
 
+                // NEW: latest version / revision label
+                string versionText = sheet.get_Parameter(BuiltInParameter.SHEET_CURRENT_REVISION)?.AsString();
+                if (string.IsNullOrWhiteSpace(versionText))
+                {
+                    // Fallback: take the highest SequenceNumber from Revisions placed on this sheet
+                    var revIds = sheet.GetAllRevisionIds();
+                    if (revIds != null && revIds.Count > 0)
+                    {
+                        var revisions = revIds
+                            .Select(id => _doc.GetElement(id) as Revision)
+                            .Where(r => r != null);
+
+                        var latest = revisions
+                            .OrderByDescending(r => r.SequenceNumber)
+                            .FirstOrDefault();
+
+                        versionText = latest?.RevisionNumber
+                                      ?? latest?.SequenceNumber.ToString();
+                    }
+                }
+                item.Version = string.IsNullOrWhiteSpace(versionText) ? "-" : versionText;
+
                 Sheets.Add(item);
+
             }
         }
 
@@ -429,13 +452,13 @@ namespace EliteSheets
 
             if (invalidSheets.Any())
             {
-                var message = "The following sheets have invalid characters in their Sheet Number:\n\n" +
+                var message = "Järgnevatel lehtedel on mittesobivad märgid nende lehenumbris:\n\n" +
                               string.Join("\n", invalidSheets.Select(i => $"• \"{i.Sheet.Number}\" → {i.Invalid}")) +
-                              "\n\nWindows does not allow the following characters in filenames:\n" +
+                              "\n\nWindows ei luba järgmisi märke failinimedes:\n" +
                               string.Join(" ", forbidden.Select(c => $"'{c}'")) +
-                              "\n\nDo you want to export the rest of the sheets?";
+                              "\n\nKas soovid eksportida ülejäänud lehed?";
 
-                var result = RevitTaskDialog.Show("Invalid Sheet Numbers", message,
+                var result = RevitTaskDialog.Show("Mittesobivad joonise numbrid", message,
                     TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
                     TaskDialogResult.No);
 

@@ -19,6 +19,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using RevitTaskDialog = Autodesk.Revit.UI.TaskDialog;
 using WinForms = System.Windows.Forms;
+using WpfComboBox = System.Windows.Controls.ComboBox;
 
 namespace EliteSheets
 {
@@ -378,6 +379,24 @@ namespace EliteSheets
         #endregion
 
         #region Button / UI handlers
+        private void ReloadButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // If you later add a "ViewTypeComboBox", you can still read it unambiguously:
+                // var viewType = (FindName("ViewTypeComboBox") as WpfComboBox)?.SelectedItem as string;
+
+                LoadSheets();               // refresh the grid’s backing collection
+                SheetsDataGrid?.Items.Refresh();
+
+                // Optional: also refresh DWG setups so the UI stays in sync
+                LoadDwgExportSetups();
+            }
+            catch (Exception ex)
+            {
+                Autodesk.Revit.UI.TaskDialog.Show("Reload Error", $"Failed to reload data: {ex.Message}");
+            }
+        }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)
         {

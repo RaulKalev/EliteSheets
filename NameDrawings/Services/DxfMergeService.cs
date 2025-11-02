@@ -12,22 +12,34 @@ namespace EliteSheets.Services
 {
     public class DxfMergeService
     {
+        // ... keep your existing methods ...
+
         /// <summary>
-        /// Merge the given DXF files into a single DXF by inserting the main content block
-        /// (e.g., PROMOTED_...) from each file, stacked vertically (mm units).
+        /// Merges multiple DXFs side-by-side into a temporary in-memory document (model-space only),
+        /// then inserts that merged content into the given TEMPLATE DXF's Model Space and saves to output.
+        /// This avoids bringing any layouts/viewports from sources into the template.
         /// </summary>
-        public void MergeIntoSingleDxf(
+        public void MergeIntoTemplate(
             IList<string> sourceDxfPaths,
+            string templateDxfPath,
             string outputDxfPath,
-            double sheetSpacingMm = 220.0)
+            double sheetSpacingMm = 220.0,
+            double insertXmm = 0.0,
+            double insertYmm = 0.0)
         {
             if (sourceDxfPaths == null || sourceDxfPaths.Count == 0)
                 throw new ArgumentException("No source DXF files to merge.", nameof(sourceDxfPaths));
+            if (string.IsNullOrWhiteSpace(templateDxfPath) || !File.Exists(templateDxfPath))
+                throw new FileNotFoundException("Template DXF not found.", templateDxfPath);
 
             Directory.CreateDirectory(Path.GetDirectoryName(outputDxfPath) ?? ".");
 
-            var target = new DxfDocument();
-            target.DrawingVariables.InsUnits = DrawingUnits.Millimeters;
+            // 1) Build an in-memory "merged" doc with only model-space inserts
+            var merged = new DxfDocument();
+            merged.DrawingVariables.InsUnits = DrawingUnits.Millimeters;
+
+            // Keep track of the inserts we add (since DrawingEntities isn't enumerable)
+            var mergedInserts = new List<Insert>();
 
             double currentX = 0.0;
             int idx = 0;
@@ -39,49 +51,142 @@ namespace EliteSheets.Services
 
                 var src = DxfDocument.Load(path);
 
-                // 1) Try to find a “content block” created by our promoter (PROMOTED_/PS_ONLY_/MODEL_COPY_…)
-                //    We simply pick the first non-reserved block with any entities.
+                // Prefer first non-reserved block with entities; else fallback to Model space block
                 Block content = src.Blocks
-                    .FirstOrDefault(b =>
-                        !string.IsNullOrEmpty(b.Name) &&
-                        b.Name[0] != '*' &&                              // skip *Model_Space, *Paper_Space, etc.
-                        b.Entities != null && b.Entities.Count > 0);
+                    .FirstOrDefault(b => !string.IsNullOrEmpty(b.Name)
+                                         && b.Name[0] != '*'
+                                         && b.Entities != null
+                                         && b.Entities.Count > 0);
 
-                // 2) Fallback: if no suitable block, try the Model Space associated block
                 if (content == null)
                 {
-                    var modelLayout = src.Layouts.FirstOrDefault(l => string.Equals(l.Name, Layout.ModelSpaceName, StringComparison.OrdinalIgnoreCase));
+                    var modelLayout = src.Layouts
+                        .FirstOrDefault(l => string.Equals(l.Name, Layout.ModelSpaceName, StringComparison.OrdinalIgnoreCase));
                     content = modelLayout?.AssociatedBlock;
                     if (content != null && (content.Entities == null || content.Entities.Count == 0))
                         content = null;
                 }
-
-                // 3) If still nothing, skip this file
                 if (content == null)
                     continue;
 
-                // 4) Clone that block into TARGET with a unique name
+                // Clone content into a unique block within the MERGED doc
                 string mergedBlockName = $"MERGE_{idx}_{Guid.NewGuid():N}";
                 var cloned = new Block(mergedBlockName);
-                foreach (var ent in content.Entities)
-                    cloned.Entities.Add((EntityObject)ent.Clone());
+                foreach (var e in content.Entities)
+                    cloned.Entities.Add((EntityObject)e.Clone());
 
-                target.Blocks.Add(cloned);
+                merged.Blocks.Add(cloned);
 
-                // 5) Insert it in Model space with vertical offset so sheets don’t overlap
+                // Insert this "page" at currentX offset
                 var ins = new Insert(cloned)
                 {
-                    Position = new netDxf.Vector3(currentX, 0, 0),   // ⟵ X offset
+                    Position = new netDxf.Vector3(currentX, 0, 0),
                     Scale = new netDxf.Vector3(1, 1, 1),
                     Rotation = 0
                 };
-                target.Entities.Add(ins);
+                merged.Entities.Add(ins);
+                mergedInserts.Add(ins);
 
                 currentX += sheetSpacingMm;
                 idx++;
             }
 
-            target.Save(outputDxfPath);
+            // Safety: strip any paper layouts in the merged doc (we won't copy them anyway)
+            // (This loop *is* enumerable in netDxf)
+            foreach (var layout in merged.Layouts.ToList())
+            {
+                if (!layout.Name.Equals(Layout.ModelSpaceName, StringComparison.OrdinalIgnoreCase))
+                    merged.Layouts.Remove(layout.Name);
+            }
+
+            // 2) Load TEMPLATE and copy merged content INTO template's Model Space
+            var template = DxfDocument.Load(templateDxfPath);
+            template.DrawingVariables.InsUnits = DrawingUnits.Millimeters;
+
+            // Clone blocks from merged -> template, tracking names to handle collisions
+            var blockNameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var b in merged.Blocks)
+            {
+                if (string.IsNullOrEmpty(b.Name) || b.Name[0] == '*') continue;
+
+                string newName = b.Name;
+                if (template.Blocks.Contains(newName))
+                {
+                    // Generate a collision-free name (keep it short-ish to avoid DXF viewer quirks)
+                    newName = $"_{Guid.NewGuid():N}".Substring(0, 12);
+                }
+
+                var cloneBlock = new Block(newName);
+                foreach (var ent in b.Entities)
+                    cloneBlock.Entities.Add((EntityObject)ent.Clone());
+
+                template.Blocks.Add(cloneBlock);
+                blockNameMap[b.Name] = newName;
+            }
+
+            // Insert all MERGED model-space inserts into TEMPLATE model space
+            double dx = insertXmm;
+            double dy = insertYmm;
+
+            foreach (var ins in mergedInserts)
+            {
+                string refName = ins.Block?.Name;
+                if (string.IsNullOrEmpty(refName)) continue;
+
+                // Map to cloned name in template
+                if (!blockNameMap.TryGetValue(refName, out string newRefName))
+                    continue;
+
+                if (!template.Blocks.Contains(newRefName))
+                    continue;
+
+                var blockInTemplate = template.Blocks[newRefName];
+
+                var insClone = new Insert(blockInTemplate)
+                {
+                    Position = new netDxf.Vector3(ins.Position.X + dx, ins.Position.Y + dy, 0),
+                    Scale = new netDxf.Vector3(ins.Scale.X, ins.Scale.Y, ins.Scale.Z),
+                    Rotation = ins.Rotation
+                };
+                template.Entities.Add(insClone);
+            }
+            // --- Cleanup unwanted Paper Space entities (keep locked layer content) ---
+            foreach (var layout in template.Layouts)
+            {
+                if (layout.Name.Equals(Layout.ModelSpaceName, StringComparison.OrdinalIgnoreCase))
+                    continue; // skip model space
+
+                var layoutBlock = layout.AssociatedBlock;
+                if (layoutBlock == null) continue;
+
+                // Collect entities to delete
+                var toRemove = new List<EntityObject>();
+                foreach (var ent in layoutBlock.Entities)
+                {
+                    var layer = ent.Layer;
+                    bool isLocked = layer != null && layer.IsLocked;
+
+                    // If it's a viewport or non-locked content, mark for deletion
+                    if (!isLocked && ent.Type == EntityType.Viewport)
+                    {
+                        toRemove.Add(ent);
+                    }
+                    else if (!isLocked && ent.Type != EntityType.Viewport)
+                    {
+                        // optionally: clear other stray stuff not on locked layer
+                        toRemove.Add(ent);
+                    }
+                }
+
+                // Delete all marked entities
+                foreach (var ent in toRemove)
+                    layoutBlock.Entities.Remove(ent);
+            }
+
+            // 3) Save final file (preserving template's layouts/viewports untouched)
+            template.Save(outputDxfPath);
         }
+
     }
 }

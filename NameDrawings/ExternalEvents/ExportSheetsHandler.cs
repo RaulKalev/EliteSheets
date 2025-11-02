@@ -222,7 +222,7 @@ namespace EliteSheets.ExternalEvents
                 {
                     var num = sheet.SheetNumber ?? "";
 
-                    // Typical Revit pattern: "DXF_Sheets-Sheet - <SheetNumber> - <SheetName>.dxf"
+                    // Typical Revit pattern
                     foreach (var fp in Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly))
                     {
                         var fn = Path.GetFileNameWithoutExtension(fp);
@@ -240,11 +240,15 @@ namespace EliteSheets.ExternalEvents
                     return null;
                 }
 
-
                 // 5) Singles: nothing to merge (already exported & promoted)
+                //    (If you want singles also templated, we can apply the same MergeIntoTemplate call per file.)
 
-                // 6) Groups: collect in order and MERGE (stack vertically like pages)
+                // 6) Groups: collect in order and MERGE *into the template* (side-by-side like pages)
                 var merger = new EliteSheets.Services.DxfMergeService();
+
+                // Your template path (kept here so it's easy to spot/edit)
+                string templatePath =
+                    @"C:\Users\mibil\EULE Dropbox\0_EULE  Team folder (kogu kollektiiv)\02_EULE REVIT TEMPLATE\KilbiTemplate.dxf";
 
                 foreach (var kvp in grouped)
                 {
@@ -271,15 +275,23 @@ namespace EliteSheets.ExternalEvents
 
                     try
                     {
-                        // Stack with 220mm spacing (adjust as needed)
-                        merger.MergeIntoSingleDxf(paths, combinedPath, sheetSpacingMm: 220.0);
+                        // NEW: Merge sources → into TEMPLATE model space → save as combinedPath
+                        // Pages spaced 220 mm apart. Insert at (0,0) in template model space.
+                        merger.MergeIntoTemplate(
+                            paths,
+                            templatePath,
+                            combinedPath,
+                            sheetSpacingMm: 220.0,
+                            insertXmm: 0.0,
+                            insertYmm: 0.0
+                        );
 
                         // OPTIONAL: clean up individual DXFs after successful merge
                         // foreach (var p in paths) { try { File.Delete(p); } catch { } }
                     }
                     catch (Exception ex)
                     {
-                        postErrors.Add($"Merge '{combinedNameNoExt}.dxf' failed: {ex.Message}");
+                        postErrors.Add($"Merge into template '{combinedNameNoExt}.dxf' failed: {ex.Message}");
                     }
                 }
             }
@@ -296,6 +308,7 @@ namespace EliteSheets.ExternalEvents
 
             return anyExportSuccess;
         }
+
 
         /// <summary>
         /// Merge multiple DXFs into one DXF by inserting each file's Model Space as a block,

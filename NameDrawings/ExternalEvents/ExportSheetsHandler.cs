@@ -3,16 +3,17 @@ using Autodesk.Revit.UI;
 using EliteSheets.Exports;
 using EliteSheets.Services;
 using netDxf;
+using netDxf.Blocks;
 using netDxf.Entities;
 using netDxf.Objects;
 using netDxf.Units;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using netDxf.Blocks;
 
 namespace EliteSheets.ExternalEvents
 {
@@ -27,6 +28,7 @@ namespace EliteSheets.ExternalEvents
         public bool ExportPdf { get; set; } = true;
         public bool ExportDwg { get; set; } = true;
         public bool ExportDxf { get; set; } = false;
+        public string TemplateDxfPath { get; set; }
 
         public void Execute(UIApplication app)
         {
@@ -45,6 +47,22 @@ namespace EliteSheets.ExternalEvents
                 anySuccess |= ExportAllDxfSheets();
 
             ShowCompletionDialog(anySuccess);
+        }
+        private static string LoadTemplatePathFromConfig()
+        {
+            const string configFile = @"C:\ProgramData\RK Tools\EliteSheets\config.json";
+            try
+            {
+                if (!File.Exists(configFile)) return null;
+                var dict = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(configFile));
+                if (dict != null && dict.TryGetValue("TemplateDxfPath", out var v))
+                {
+                    var p = v?.ToString();
+                    return !string.IsNullOrWhiteSpace(p) && File.Exists(p) ? p : null;
+                }
+            }
+            catch { }
+            return null;
         }
 
         private bool ExportAllDwgSheets()
@@ -149,7 +167,7 @@ namespace EliteSheets.ExternalEvents
             bool anyExportSuccess = false;
             var postErrors = new List<string>();
 
-            // --- Group sheets like PDF export does ---
+            // --- Partition into singles vs grouped like PDF ---
             var grouped = new Dictionary<string, List<(ViewSheet Sheet, int Order)>>(StringComparer.OrdinalIgnoreCase);
             var singles = new List<ViewSheet>();
 
@@ -177,121 +195,165 @@ namespace EliteSheets.ExternalEvents
                 list.Add((sheet, order));
             }
 
-            // --- Export all selected sheets in one go (Revit makes 1 DXF per sheet) ---
-            var sheetIds = SheetsToExport.Select(s => s.Id).ToList();
-            if (sheetIds.Count == 0) return false;
+            // --- Helper: find DXF by sheet number in a directory ---
+            string FindDxfForSheet(ViewSheet sheet, string folder)
+            {
+                var num = sheet.SheetNumber ?? "";
+
+                // Typical Revit pattern: "Prefix-Sheet - <SheetNumber> - <SheetName>.dxf"
+                foreach (var fp in Directory.EnumerateFiles(folder, "*.dxf", SearchOption.TopDirectoryOnly))
+                {
+                    var fn = Path.GetFileNameWithoutExtension(fp);
+                    if (fn.IndexOf($" - {num} - ", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return fp;
+                }
+
+                // Fallback: filename contains the sheet number somewhere
+                foreach (var fp in Directory.EnumerateFiles(folder, "*.dxf", SearchOption.TopDirectoryOnly))
+                {
+                    var fn = Path.GetFileNameWithoutExtension(fp);
+                    if (fn.IndexOf(num, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return fp;
+                }
+                return null;
+            }
 
             try
             {
-                // 1) Snapshot folder to detect new/updated files
-                var pre = new HashSet<string>(
-                    Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly),
-                    StringComparer.OrdinalIgnoreCase);
-
-                // 2) Export
-                var dxf = new EliteSheets.Services.DxfExportService();
-                if (!dxf.Export(Doc, sheetIds, ExportPath, "DXF_Sheets", ExportSetupName, false, out string failure))
-                {
-                    Debug.WriteLine($"DXF sheet export failed: {failure}");
-                    return false;
-                }
-                anyExportSuccess = true;
-
-                // 3) Find fresh files (diff; fallback to mtime)
-                List<string> newFiles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
-                                               .Where(p => !pre.Contains(p)).ToList();
-                if (newFiles.Count == 0)
-                {
-                    var cutoff = DateTime.UtcNow.AddMinutes(-3);
-                    newFiles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
-                                        .Where(p => File.GetLastWriteTimeUtc(p) >= cutoff)
-                                        .ToList();
-                }
-
-                // 4) Promote Paper→Model for all fresh files
+                var dxfExporter = new EliteSheets.Services.DxfExportService();
                 var promoter = new EliteSheets.Services.DxfPaperToModelPromoter();
-                foreach (var path in newFiles)
-                {
-                    try { promoter.PromotePaperToModel(path); }
-                    catch (Exception ex) { postErrors.Add($"{Path.GetFileName(path)}: {ex.Message}"); }
-                }
-
-                // Helper: map a ViewSheet to its exported DXF path.
-                // Revit pattern is typically: "DXF_Sheets-Sheet - <SheetNumber> - <SheetName>.dxf"
-                string FindDxfForSheet(ViewSheet sheet)
-                {
-                    var num = sheet.SheetNumber ?? "";
-
-                    // Typical Revit pattern
-                    foreach (var fp in Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly))
-                    {
-                        var fn = Path.GetFileNameWithoutExtension(fp);
-                        if (fn.IndexOf($" - {num} - ", StringComparison.OrdinalIgnoreCase) >= 0)
-                            return fp;
-                    }
-
-                    // Fallback: filename contains the sheet number somewhere
-                    foreach (var fp in Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly))
-                    {
-                        var fn = Path.GetFileNameWithoutExtension(fp);
-                        if (fn.IndexOf(num, StringComparison.OrdinalIgnoreCase) >= 0)
-                            return fp;
-                    }
-                    return null;
-                }
-
-                // 5) Singles: nothing to merge (already exported & promoted)
-                //    (If you want singles also templated, we can apply the same MergeIntoTemplate call per file.)
-
-                // 6) Groups: collect in order and MERGE *into the template* (side-by-side like pages)
                 var merger = new EliteSheets.Services.DxfMergeService();
 
-                // Your template path (kept here so it's easy to spot/edit)
-                string templatePath =
-                    @"C:\Users\mibil\EULE Dropbox\0_EULE  Team folder (kogu kollektiiv)\02_EULE REVIT TEMPLATE\KilbiTemplate.dxf";
+                // Resolve template path: prefer value passed by MainWindow, else read JSON.
+                string templatePath = (this is EliteSheets.ExternalEvents.ExportSheetsHandler h && !string.IsNullOrWhiteSpace(h.TemplateDxfPath))
+                    ? h.TemplateDxfPath
+                    : LoadTemplatePathFromConfig(); // <-- include the helper from earlier answer
 
-                foreach (var kvp in grouped)
+                if (string.IsNullOrWhiteSpace(templatePath) || !File.Exists(templatePath))
                 {
-                    string groupNumber = kvp.Key; // e.g. "01"
-                    var orderedSheets = kvp.Value
-                        .OrderBy(t => t.Order)
-                        .ThenBy(t => t.Sheet.SheetNumber, StringComparer.OrdinalIgnoreCase)
-                        .Select(t => t.Sheet)
-                        .ToList();
+                    TaskDialog.Show("DXF eksport",
+                        "Mallifaili (DXF) asukoht ei ole seadistatud või faili ei leitud. " +
+                        "Ava EliteSheets aken ja vali mall seadetes.");
+                    return anyExportSuccess;
+                }
 
-                    var paths = new List<string>();
-                    foreach (var s in orderedSheets)
+                // ============ 1) Export SINGLES directly to the final export folder ============
+                var singleIds = singles.Select(s => s.Id).ToList();
+                if (singleIds.Count > 0)
+                {
+                    // Snapshot to detect new singles quickly
+                    var pre = new HashSet<string>(
+                        Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    if (!dxfExporter.Export(Doc, singleIds, ExportPath, "DXF_Sheets", ExportSetupName, false, out string failureSingles))
                     {
-                        var p = FindDxfForSheet(s);
-                        if (!string.IsNullOrEmpty(p) && File.Exists(p))
-                            paths.Add(p);
-                        else
-                            postErrors.Add($"DXF for sheet '{s.SheetNumber}' not found for merging.");
+                        Debug.WriteLine($"DXF export (singles) failed: {failureSingles}");
                     }
-                    if (paths.Count == 0) continue;
+                    else
+                    {
+                        anyExportSuccess = true;
 
-                    string combinedNameNoExt = BuildCombinedFileName(orderedSheets.First().SheetNumber, groupNumber);
-                    string combinedPath = Path.Combine(ExportPath, combinedNameNoExt + ".dxf");
+                        // Promote Paper→Model for the new single files only
+                        var newSingles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
+                                                  .Where(p => !pre.Contains(p))
+                                                  .ToList();
+
+                        // If snapshot didn’t find them (timestamp fallback)
+                        if (newSingles.Count == 0)
+                        {
+                            var cutoff = DateTime.UtcNow.AddMinutes(-3);
+                            newSingles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
+                                                  .Where(p => File.GetLastWriteTimeUtc(p) >= cutoff)
+                                                  .ToList();
+                        }
+
+                        foreach (var path in newSingles)
+                        {
+                            try { promoter.PromotePaperToModel(path); }
+                            catch (Exception ex) { postErrors.Add($"{Path.GetFileName(path)}: {ex.Message}"); }
+                        }
+                    }
+                }
+
+                // ============ 2) Export GROUPED sheets to a TEMP folder, merge, then delete ============
+                if (grouped.Count > 0)
+                {
+                    // Separate temp folder for grouped sheets so we can safely delete them afterwards
+                    string tempRoot = Path.Combine(ExportPath, "_tmp_dxf_merge_" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(tempRoot);
 
                     try
                     {
-                        // NEW: Merge sources → into TEMPLATE model space → save as combinedPath
-                        // Pages spaced 220 mm apart. Insert at (0,0) in template model space.
-                        merger.MergeIntoTemplate(
-                            paths,
-                            templatePath,
-                            combinedPath,
-                            sheetSpacingMm: 220.0,
-                            insertXmm: 0.0,
-                            insertYmm: 0.0
-                        );
+                        // Collect all sheet Ids that belong to any group
+                        var groupedIds = grouped.Values.SelectMany(v => v.Select(t => t.Sheet.Id)).Distinct().ToList();
 
-                        // OPTIONAL: clean up individual DXFs after successful merge
-                        // foreach (var p in paths) { try { File.Delete(p); } catch { } }
+                        if (groupedIds.Count > 0)
+                        {
+                            if (!dxfExporter.Export(Doc, groupedIds, tempRoot, "DXF_Sheets", ExportSetupName, false, out string failureGroups))
+                            {
+                                Debug.WriteLine($"DXF export (groups) failed: {failureGroups}");
+                            }
+                            else
+                            {
+                                anyExportSuccess = true;
+
+                                // Promote all temp DXFs
+                                foreach (var path in Directory.EnumerateFiles(tempRoot, "*.dxf", SearchOption.TopDirectoryOnly))
+                                {
+                                    try { promoter.PromotePaperToModel(path); }
+                                    catch (Exception ex) { postErrors.Add($"(temp) {Path.GetFileName(path)}: {ex.Message}"); }
+                                }
+
+                                // Merge per group using ONLY temp files → output to ExportPath
+                                foreach (var kvp in grouped)
+                                {
+                                    string groupNumber = kvp.Key; // e.g. "01"
+                                    var orderedSheets = kvp.Value
+                                        .OrderBy(t => t.Order)
+                                        .ThenBy(t => t.Sheet.SheetNumber, StringComparer.OrdinalIgnoreCase)
+                                        .Select(t => t.Sheet)
+                                        .ToList();
+
+                                    var paths = new List<string>();
+                                    foreach (var s in orderedSheets)
+                                    {
+                                        var p = FindDxfForSheet(s, tempRoot);
+                                        if (!string.IsNullOrEmpty(p) && File.Exists(p))
+                                            paths.Add(p);
+                                        else
+                                            postErrors.Add($"DXF for sheet '{s.SheetNumber}' not found for merging (temp).");
+                                    }
+                                    if (paths.Count == 0) continue;
+
+                                    string combinedNameNoExt = BuildCombinedFileName(orderedSheets.First().SheetNumber, groupNumber);
+                                    string combinedPath = Path.Combine(ExportPath, combinedNameNoExt + ".dxf");
+
+                                    try
+                                    {
+                                        // Merge sources → into TEMPLATE model space → save as combinedPath
+                                        merger.MergeIntoTemplate(
+                                            paths,
+                                            templatePath,
+                                            combinedPath,
+                                            sheetSpacingMm: 220.0,
+                                            insertXmm: 0.0,
+                                            insertYmm: 0.0
+                                        );
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        postErrors.Add($"Merge into template '{combinedNameNoExt}.dxf' failed: {ex.Message}");
+                                    }
+                                }
+                            }
+                        }
                     }
-                    catch (Exception ex)
+                    finally
                     {
-                        postErrors.Add($"Merge into template '{combinedNameNoExt}.dxf' failed: {ex.Message}");
+                        // Delete ALL temp files/folder (so only the merged DXFs remain)
+                        try { Directory.Delete(tempRoot, true); }
+                        catch (Exception ex) { postErrors.Add($"Temp cleanup failed: {ex.Message}"); }
                     }
                 }
             }
@@ -308,6 +370,7 @@ namespace EliteSheets.ExternalEvents
 
             return anyExportSuccess;
         }
+
 
 
         /// <summary>

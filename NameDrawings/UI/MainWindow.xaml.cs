@@ -20,6 +20,7 @@ using System.Windows.Threading;
 using RevitTaskDialog = Autodesk.Revit.UI.TaskDialog;
 using WinForms = System.Windows.Forms;
 using WpfComboBox = System.Windows.Controls.ComboBox;
+using Microsoft.Win32; // OpenFileDialog
 
 namespace EliteSheets
 {
@@ -48,6 +49,7 @@ namespace EliteSheets
         private readonly WindowResizer _windowResizer;
         private bool _isDarkMode = true;
         private bool _isInitialized;
+        private string _templateDxfPath = string.Empty;
 
         public ObservableCollection<string> ViewTypes { get; set; } = new ObservableCollection<string>();
         public ObservableCollection<string> ViewTemplates { get; set; } = new ObservableCollection<string>();
@@ -91,6 +93,12 @@ namespace EliteSheets
 
             // Theme + DataContext
             LoadThemeState();
+            Loaded += (s, e) =>
+            {
+                // run after the window is visible and Revit is idle
+                Dispatcher.BeginInvoke(new Action(EnsureTemplatePathConfigured),
+                    System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            };
             LoadTheme();
             DataContext = this;
 
@@ -131,13 +139,12 @@ namespace EliteSheets
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
         private void ToggleTheme_Click(object sender, RoutedEventArgs e)
         {
             _isDarkMode = ThemeToggleButton.IsChecked == true;
             LoadTheme();
+            SaveThemeState(); // <-- add this
 
-            // Ensure the icon reflects the current state
             var icon = ThemeToggleButton?.Template?.FindName("ThemeToggleIcon", ThemeToggleButton)
                        as MaterialDesignThemes.Wpf.PackIcon;
             if (icon != null)
@@ -156,21 +163,24 @@ namespace EliteSheets
                 {
                     var json = File.ReadAllText(ConfigFilePath);
                     var config = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-                    if (config != null &&
-                        config.TryGetValue("IsDarkMode", out var isDarkModeObj) &&
-                        isDarkModeObj is bool isDark)
+
+                    if (config != null)
                     {
-                        _isDarkMode = isDark;
+                        if (config.TryGetValue("IsDarkMode", out var isDarkModeObj) && isDarkModeObj is bool isDark)
+                            _isDarkMode = isDark;
+
+                        if (config.TryGetValue("TemplateDxfPath", out var templateObj))
+                            _templateDxfPath = templateObj?.ToString() ?? string.Empty;
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load theme state: {ex.Message}", "Load Error",
+                MessageBox.Show($"Failed to load theme/config: {ex.Message}", "Load Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
 
-            // Reflect the state in the toggle (if template is ready)
+            // reflect UI
             ThemeToggleButton.IsChecked = _isDarkMode;
             var icon = ThemeToggleButton?.Template?.FindName("ThemeToggleIcon", ThemeToggleButton)
                        as MaterialDesignThemes.Wpf.PackIcon;
@@ -195,16 +205,59 @@ namespace EliteSheets
                              ?? new Dictionary<string, object>();
                 }
 
+                // preserve/export paths and other keys; just update these two
                 config["IsDarkMode"] = _isDarkMode;
+                if (!string.IsNullOrWhiteSpace(_templateDxfPath))
+                    config["TemplateDxfPath"] = _templateDxfPath;
 
                 Directory.CreateDirectory(Path.GetDirectoryName(ConfigFilePath));
                 File.WriteAllText(ConfigFilePath, JsonConvert.SerializeObject(config, Formatting.Indented));
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to save theme state: {ex.Message}", "Save Error",
+                MessageBox.Show($"Failed to save settings: {ex.Message}", "Save Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+        private void EnsureTemplatePathConfigured()
+        {
+            if (!IsLoaded)
+            {
+                Dispatcher.BeginInvoke(new Action(EnsureTemplatePathConfigured),
+                    System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                return;
+            }
+            // already set and exists → nothing to do
+            if (!string.IsNullOrWhiteSpace(_templateDxfPath) && File.Exists(_templateDxfPath))
+                return;
+
+            var user = Environment.UserName;
+            string suggestedFolder = $@"C:\Users\{user}\EULE Dropbox\0_EULE  Team folder (kogu kollektiiv)\02_EULE REVIT TEMPLATE";
+
+
+            MessageBox.Show(
+                "Palun vali DXF mallifail (tingimata .dxf). " +
+                "Soovitatav asukoht avatakse dialoogis automaatselt.",
+                "Vajalik seadistus", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            var dlg = new OpenFileDialog
+            {
+                Title = "Vali mall (DXF)",
+                Filter = "DXF fail (*.dxf)|*.dxf",
+                CheckFileExists = true,
+                Multiselect = false,
+                InitialDirectory = Directory.Exists(suggestedFolder)
+                    ? suggestedFolder
+                    : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                FileName = "KilbiTemplate.dxf"
+            };
+
+            if (dlg.ShowDialog() == true)
+            {
+                // ...
+            }
+            _templateDxfPath = dlg.FileName;
+            SaveThemeState();
         }
 
         #endregion
@@ -316,18 +369,28 @@ namespace EliteSheets
                     IsChecked = false
                 };
 
-                // size label (existing)
-                var outline = sheet.Outline;
-                if (outline != null)
+                // size label (optimized)
+                // If sheet number contains "--" then we already know it's an A4 merge sheet
+                if ((sheet.SheetNumber ?? "").Contains("--"))
                 {
-                    var width = UnitUtils.ConvertFromInternalUnits(outline.Max.U - outline.Min.U, UnitTypeId.Millimeters);
-                    var height = UnitUtils.ConvertFromInternalUnits(outline.Max.V - outline.Min.V, UnitTypeId.Millimeters);
-                    item.SheetSize = PaperSizeHelper.GetPaperSizeLabel(width, height);
+                    item.SheetSize = "A4";
                 }
                 else
                 {
-                    item.SheetSize = "Unknown";
+                    // Only compute outline for larger / main sheets
+                    var outline = sheet.Outline;
+                    if (outline != null)
+                    {
+                        var width = UnitUtils.ConvertFromInternalUnits(outline.Max.U - outline.Min.U, UnitTypeId.Millimeters);
+                        var height = UnitUtils.ConvertFromInternalUnits(outline.Max.V - outline.Min.V, UnitTypeId.Millimeters);
+                        item.SheetSize = PaperSizeHelper.GetPaperSizeLabel(width, height);
+                    }
+                    else
+                    {
+                        item.SheetSize = "Unknown";
+                    }
                 }
+
 
                 // NEW: latest version / revision label
                 string versionText = sheet.get_Parameter(BuiltInParameter.SHEET_CURRENT_REVISION)?.AsString();
@@ -514,9 +577,10 @@ namespace EliteSheets
             _exportHandler.ExportPdf = exportPdf;
             _exportHandler.ExportDwg = exportDwg;
             _exportHandler.ExportDxf = exportDxf;
-
+            _exportHandler.TemplateDxfPath = _templateDxfPath;
 
             _exportEvent.Raise();
+
         }
 
         private void Checkbox_Click(object sender, RoutedEventArgs e)

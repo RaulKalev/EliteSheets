@@ -9,6 +9,7 @@
 			Microsoft.WindowsAPICodePack
 			Microsoft.WindowsAPICodePack.Shell
 			ricaun.Revit.UI.0.7.1
+			netDxf
 		</IncludeAssemblies>
 		<PreloadOrder>
 			Newtonsoft.Json

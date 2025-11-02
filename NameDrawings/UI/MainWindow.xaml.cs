@@ -236,8 +236,9 @@ namespace EliteSheets
 
 
             MessageBox.Show(
-                "Palun vali DXF mallifail (tingimata .dxf). " +
-                "Soovitatav asukoht avatakse dialoogis automaatselt.",
+                "Palun vali DXF template KilbiTemplate.dxf (tingimata .dxf). " +
+                "Soovitatav asukoht avatakse dialoogis automaatselt." +
+                "\nFail asub kaustas:  \\EULE Dropbox\\0_EULE  Team folder (kogu kollektiiv)\\02_EULE REVIT TEMPLATE ",
                 "Vajalik seadistus", MessageBoxButton.OK, MessageBoxImage.Information);
 
             var dlg = new OpenFileDialog

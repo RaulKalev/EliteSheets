@@ -313,10 +313,18 @@
                                     Style="{StaticResource CustomCheckboxStyle}" />
                                 <CheckBox
                                     x:Name="PdfExportCheckbox"
+                                    Margin="0,0,20,0"
                                     Content="PDF"
                                     FontSize="24"
                                     FontWeight="Bold"
                                     IsChecked="True"
+                                    Style="{StaticResource CustomCheckboxStyle}" />
+                                <CheckBox
+                                    x:Name="DxfExportCheckbox"
+                                    Content="DXF"
+                                    FontSize="24"
+                                    FontWeight="Bold"
+                                    IsChecked="False"
                                     Style="{StaticResource CustomCheckboxStyle}" />
                             </StackPanel>
 

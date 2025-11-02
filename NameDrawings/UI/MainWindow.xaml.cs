@@ -444,10 +444,11 @@ namespace EliteSheets
 
             var exportDwg = (LogicalTreeHelper.FindLogicalNode(this, "DwgExportCheckbox") as CheckBox)?.IsChecked == true;
             var exportPdf = (LogicalTreeHelper.FindLogicalNode(this, "PdfExportCheckbox") as CheckBox)?.IsChecked == true;
+            var exportDxf = (LogicalTreeHelper.FindLogicalNode(this, "DxfExportCheckbox") as CheckBox)?.IsChecked == true;
 
-            if (!exportDwg && !exportPdf)
+            if (!exportDwg && !exportPdf && !exportDxf)
             {
-                RevitTaskDialog.Show("Info", "Neither DWG nor PDF export is selected.");
+                RevitTaskDialog.Show("Info", "Neither DWG, DXF nor PDF export is selected.");
                 return;
             }
 
@@ -512,6 +513,8 @@ namespace EliteSheets
             _exportHandler.ExportSetupName = exportSetup?.Name;
             _exportHandler.ExportPdf = exportPdf;
             _exportHandler.ExportDwg = exportDwg;
+            _exportHandler.ExportDxf = exportDxf;
+
 
             _exportEvent.Raise();
         }

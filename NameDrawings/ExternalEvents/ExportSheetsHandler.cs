@@ -1,12 +1,18 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using EliteSheets.Exports;
+using EliteSheets.Services;
+using netDxf;
+using netDxf.Entities;
+using netDxf.Objects;
+using netDxf.Units;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using netDxf.Blocks;
 
 namespace EliteSheets.ExternalEvents
 {
@@ -20,6 +26,7 @@ namespace EliteSheets.ExternalEvents
         public string ExportSetupName { get; set; }
         public bool ExportPdf { get; set; } = true;
         public bool ExportDwg { get; set; } = true;
+        public bool ExportDxf { get; set; } = false;
 
         public void Execute(UIApplication app)
         {
@@ -33,6 +40,9 @@ namespace EliteSheets.ExternalEvents
 
             if (ExportPdf)
                 anySuccess |= ExportAllPdfSheets();
+
+            if (ExportDxf)
+                anySuccess |= ExportAllDxfSheets();
 
             ShowCompletionDialog(anySuccess);
         }
@@ -134,6 +144,222 @@ namespace EliteSheets.ExternalEvents
 
             return success;
         }
+        private bool ExportAllDxfSheets()
+        {
+            bool anyExportSuccess = false;
+            var postErrors = new List<string>();
+
+            // --- Group sheets like PDF export does ---
+            var grouped = new Dictionary<string, List<(ViewSheet Sheet, int Order)>>(StringComparer.OrdinalIgnoreCase);
+            var singles = new List<ViewSheet>();
+
+            foreach (var sheet in SheetsToExport)
+            {
+                var num = sheet.SheetNumber ?? string.Empty;
+
+                if (!TryParseMergeOrder(num, out int order))
+                {
+                    singles.Add(sheet); // no "--N" -> treat as single
+                    continue;
+                }
+
+                if (!TryParseGroupNumber(num, out string groupKey))
+                {
+                    singles.Add(sheet);
+                    continue;
+                }
+
+                if (!grouped.TryGetValue(groupKey, out var list))
+                {
+                    list = new List<(ViewSheet, int)>();
+                    grouped[groupKey] = list;
+                }
+                list.Add((sheet, order));
+            }
+
+            // --- Export all selected sheets in one go (Revit makes 1 DXF per sheet) ---
+            var sheetIds = SheetsToExport.Select(s => s.Id).ToList();
+            if (sheetIds.Count == 0) return false;
+
+            try
+            {
+                // 1) Snapshot folder to detect new/updated files
+                var pre = new HashSet<string>(
+                    Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly),
+                    StringComparer.OrdinalIgnoreCase);
+
+                // 2) Export
+                var dxf = new EliteSheets.Services.DxfExportService();
+                if (!dxf.Export(Doc, sheetIds, ExportPath, "DXF_Sheets", ExportSetupName, false, out string failure))
+                {
+                    Debug.WriteLine($"DXF sheet export failed: {failure}");
+                    return false;
+                }
+                anyExportSuccess = true;
+
+                // 3) Find fresh files (diff; fallback to mtime)
+                List<string> newFiles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
+                                               .Where(p => !pre.Contains(p)).ToList();
+                if (newFiles.Count == 0)
+                {
+                    var cutoff = DateTime.UtcNow.AddMinutes(-3);
+                    newFiles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
+                                        .Where(p => File.GetLastWriteTimeUtc(p) >= cutoff)
+                                        .ToList();
+                }
+
+                // 4) Promote Paper→Model for all fresh files
+                var promoter = new EliteSheets.Services.DxfPaperToModelPromoter();
+                foreach (var path in newFiles)
+                {
+                    try { promoter.PromotePaperToModel(path); }
+                    catch (Exception ex) { postErrors.Add($"{Path.GetFileName(path)}: {ex.Message}"); }
+                }
+
+                // Helper: map a ViewSheet to its exported DXF path.
+                // Revit pattern is typically: "DXF_Sheets-Sheet - <SheetNumber> - <SheetName>.dxf"
+                string FindDxfForSheet(ViewSheet sheet)
+                {
+                    var num = sheet.SheetNumber ?? "";
+
+                    // Typical Revit pattern: "DXF_Sheets-Sheet - <SheetNumber> - <SheetName>.dxf"
+                    foreach (var fp in Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly))
+                    {
+                        var fn = Path.GetFileNameWithoutExtension(fp);
+                        if (fn.IndexOf($" - {num} - ", StringComparison.OrdinalIgnoreCase) >= 0)
+                            return fp;
+                    }
+
+                    // Fallback: filename contains the sheet number somewhere
+                    foreach (var fp in Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly))
+                    {
+                        var fn = Path.GetFileNameWithoutExtension(fp);
+                        if (fn.IndexOf(num, StringComparison.OrdinalIgnoreCase) >= 0)
+                            return fp;
+                    }
+                    return null;
+                }
+
+
+                // 5) Singles: nothing to merge (already exported & promoted)
+
+                // 6) Groups: collect in order and MERGE (stack vertically like pages)
+                var merger = new EliteSheets.Services.DxfMergeService();
+
+                foreach (var kvp in grouped)
+                {
+                    string groupNumber = kvp.Key; // e.g. "01"
+                    var orderedSheets = kvp.Value
+                        .OrderBy(t => t.Order)
+                        .ThenBy(t => t.Sheet.SheetNumber, StringComparer.OrdinalIgnoreCase)
+                        .Select(t => t.Sheet)
+                        .ToList();
+
+                    var paths = new List<string>();
+                    foreach (var s in orderedSheets)
+                    {
+                        var p = FindDxfForSheet(s);
+                        if (!string.IsNullOrEmpty(p) && File.Exists(p))
+                            paths.Add(p);
+                        else
+                            postErrors.Add($"DXF for sheet '{s.SheetNumber}' not found for merging.");
+                    }
+                    if (paths.Count == 0) continue;
+
+                    string combinedNameNoExt = BuildCombinedFileName(orderedSheets.First().SheetNumber, groupNumber);
+                    string combinedPath = Path.Combine(ExportPath, combinedNameNoExt + ".dxf");
+
+                    try
+                    {
+                        // Stack with 220mm spacing (adjust as needed)
+                        merger.MergeIntoSingleDxf(paths, combinedPath, sheetSpacingMm: 220.0);
+
+                        // OPTIONAL: clean up individual DXFs after successful merge
+                        // foreach (var p in paths) { try { File.Delete(p); } catch { } }
+                    }
+                    catch (Exception ex)
+                    {
+                        postErrors.Add($"Merge '{combinedNameNoExt}.dxf' failed: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                postErrors.Add($"DXF export/post exception: {ex.Message}");
+            }
+
+            if (postErrors.Count > 0)
+            {
+                TaskDialog.Show("DXF post-processing",
+                    "Some DXF files were exported/merged but issues occurred:\n\n" + string.Join("\n", postErrors));
+            }
+
+            return anyExportSuccess;
+        }
+
+        /// <summary>
+        /// Merge multiple DXFs into one DXF by inserting each file's Model Space as a block,
+        /// spaced apart along +X (so sheets don't overlap). Units: millimetres.
+        /// </summary>
+        private static void MergeDxfFilesSideBySide(IList<string> sourcePaths, string outputPath)
+        {
+            if (sourcePaths == null || sourcePaths.Count == 0)
+                throw new ArgumentException("No DXF files to merge.");
+
+            const double PAGE_SPACING_MM = 100000.0; // horizontal spacing between merged “pages”
+
+            var target = new DxfDocument();
+            target.DrawingVariables.InsUnits = DrawingUnits.Millimeters;
+
+            double offsetX = 0.0;
+            int idx = 1;
+
+            foreach (var path in sourcePaths)
+            {
+                var src = DxfDocument.Load(path);
+
+                // find source MODEL space block
+                Block srcModel =
+                    src.Blocks.Contains(Layout.ModelSpaceName)
+                        ? src.Blocks[Layout.ModelSpaceName]
+                        : src.Blocks.FirstOrDefault(b =>
+                              string.Equals(b.Name, "*Model_Space", StringComparison.OrdinalIgnoreCase));
+
+                if (srcModel == null)
+                    throw new InvalidDataException($"Model Space block not found in: {Path.GetFileName(path)}");
+
+                // make a new block in the TARGET to host cloned entities from this source's MODEL space
+                string blockName = $"SHEET_{idx}_{Guid.NewGuid():N}";
+                var blk = new Block(blockName);
+
+                foreach (var ent in srcModel.Entities)
+                    blk.Entities.Add((EntityObject)ent.Clone());
+
+                // register block + insert it at offset
+                target.Blocks.Add(blk);
+                target.Entities.Add(new Insert(blk)
+                {
+                    Position = new netDxf.Vector3(offsetX, 0, 0),
+                    Scale = new netDxf.Vector3(1, 1, 1),
+                    Rotation = 0
+                });
+
+                offsetX += PAGE_SPACING_MM;
+                idx++;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
+            target.Save(outputPath);
+        }
+
+        private static string Sanitize(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "NA";
+            foreach (var c in System.IO.Path.GetInvalidFileNameChars())
+                s = s.Replace(c.ToString(), "");
+            return s;
+        }
+
         // e.g. "...--1" or "...-- 1" at the END
         private static bool TryParseMergeOrder(string sheetNumber, out int order)
         {

@@ -21,6 +21,10 @@ using RevitTaskDialog = Autodesk.Revit.UI.TaskDialog;
 using WinForms = System.Windows.Forms;
 using WpfComboBox = System.Windows.Controls.ComboBox;
 using Microsoft.Win32; // OpenFileDialog
+using System.ComponentModel;
+using System.Windows.Data;
+using System.Collections;
+using System.Text.RegularExpressions;
 
 namespace EliteSheets
 {
@@ -37,6 +41,7 @@ namespace EliteSheets
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); // (kept for future use)
 
         private const int SW_RESTORE = 9;
+        private ICollectionView _sheetsView;
 
         #endregion
 
@@ -106,6 +111,31 @@ namespace EliteSheets
             _isInitialized = true;
             LoadExportPathForCurrentProject();
             LoadSheets();
+
+            _sheetsView = CollectionViewSource.GetDefaultView(Sheets);
+            _sheetsView.Filter = SheetsFilter;
+
+            // Default sort on launch: Sheet Number (natural)
+            var listView = _sheetsView as ListCollectionView;
+            if (listView != null)
+            {
+                // IMPORTANT: do not use SortDescriptions together with CustomSort
+                listView.SortDescriptions.Clear();
+                listView.CustomSort = new SheetNumberComparer();
+            }
+            else
+            {
+                // fallback: basic string sort if view is not a ListCollectionView (rare)
+                _sheetsView.SortDescriptions.Clear();
+                _sheetsView.SortDescriptions.Add(new SortDescription(nameof(SheetItem.Number), ListSortDirection.Ascending));
+            }
+
+            _sheetsView.Refresh();
+
+
+
+            UpdateClearButtonState();
+
             LoadDwgExportSetups();
 
             // External events
@@ -260,10 +290,111 @@ namespace EliteSheets
             _templateDxfPath = dlg.FileName;
             SaveThemeState();
         }
+        private sealed class SheetNumberComparer : IComparer
+        {
+            public int Compare(object x, object y)
+            {
+                var a = x as SheetItem;
+                var b = y as SheetItem;
+
+                var an = a?.Number ?? string.Empty;
+                var bn = b?.Number ?? string.Empty;
+
+                return CompareNatural(an, bn);
+            }
+
+            private static int CompareNatural(string a, string b)
+            {
+                if (ReferenceEquals(a, b)) return 0;
+                if (a == null) return -1;
+                if (b == null) return 1;
+
+                var ax = Tokenize(a);
+                var bx = Tokenize(b);
+
+                int n = Math.Min(ax.Count, bx.Count);
+                for (int i = 0; i < n; i++)
+                {
+                    var ta = ax[i];
+                    var tb = bx[i];
+
+                    bool na = int.TryParse(ta, out int ia);
+                    bool nb = int.TryParse(tb, out int ib);
+
+                    int cmp;
+                    if (na && nb)
+                    {
+                        cmp = ia.CompareTo(ib);
+                    }
+                    else
+                    {
+                        cmp = string.Compare(ta, tb, StringComparison.InvariantCultureIgnoreCase);
+                    }
+
+                    if (cmp != 0) return cmp;
+                }
+
+                return ax.Count.CompareTo(bx.Count);
+            }
+
+            private static List<string> Tokenize(string s)
+            {
+                // Splits into sequences of digits and non-digits
+                // Example: "A-10+2" => ["A-", "10", "+", "2"]
+                var list = new List<string>();
+                foreach (Match m in Regex.Matches(s, @"\d+|\D+"))
+                    list.Add(m.Value);
+                return list;
+            }
+        }
 
         #endregion
 
         #region Config: Export path per project
+        private bool SheetsFilter(object obj)
+        {
+            var item = obj as SheetItem;
+            if (item == null) return false;
+
+            var q = (SheetSearchTextBox?.Text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(q)) return true;
+
+            q = q.ToLowerInvariant();
+
+            // Search fields (safe even if some are null)
+            var number = (item.Number ?? string.Empty).ToLowerInvariant();
+            var name = (item.Name ?? string.Empty).ToLowerInvariant();
+            var version = (item.Version ?? string.Empty).ToLowerInvariant();
+            var size = (item.SheetSize ?? string.Empty).ToLowerInvariant();
+            var viewName = (item.ViewName ?? string.Empty).ToLowerInvariant();
+
+            return number.Contains(q)
+                || name.Contains(q)
+                || version.Contains(q)
+                || size.Contains(q)
+                || viewName.Contains(q);
+        }
+
+        private void SheetSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _sheetsView?.Refresh();
+            UpdateClearButtonState();
+        }
+
+        private void ClearSearchButton_Click(object sender, RoutedEventArgs e)
+        {
+            SheetSearchTextBox.Text = string.Empty;
+            SheetSearchTextBox.Focus();
+
+            _sheetsView?.Refresh();
+            UpdateClearButtonState();
+        }
+
+        private void UpdateClearButtonState()
+        {
+            if (ClearSearchButton == null || SheetSearchTextBox == null) return;
+            ClearSearchButton.IsEnabled = !string.IsNullOrWhiteSpace(SheetSearchTextBox.Text);
+        }
 
         private void SaveExportPathForCurrentProject(string exportPath)
         {
@@ -460,6 +591,8 @@ namespace EliteSheets
             {
                 Autodesk.Revit.UI.TaskDialog.Show("Reload Error", $"Failed to reload data: {ex.Message}");
             }
+            _sheetsView?.Refresh();
+
         }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)

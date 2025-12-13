@@ -83,6 +83,41 @@
                 <Setter Property="BorderThickness" Value="0,0,0,1" />
                 <!--  removes right border  -->
             </Style>
+            <!--  Flat icon button: no default hover/press chrome  -->
+            <Style x:Key="FlatIconButton" TargetType="{x:Type Button}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type Button}">
+                            <Border
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+
+                            <!--  OPTIONAL: subtle feedback without “weird” color  -->
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Opacity" Value="0.85" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Opacity" Value="0.70" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.35" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
         </ResourceDictionary>
     </Window.Resources>
@@ -125,6 +160,73 @@
                     Grid.Row="0"
                     Foreground="{DynamicResource ForegroundBrush}"
                     Loaded="TitleBar_Loaded" />
+
+                <!--  Search bar (Row 0)  -->
+                <Border
+                    Grid.Row="0"
+                    Height="24"
+                    Margin="0,0,200,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Background="{DynamicResource SecondaryBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Opacity="0.95">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="28" />
+                        </Grid.ColumnDefinitions>
+
+                        <!--  Magnify icon  -->
+                        <materialDesign:PackIcon
+                            Grid.Column="0"
+                            Width="16"
+                            Height="16"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource IconBrush}"
+                            Kind="Magnify" />
+
+                        <!--  Search textbox  -->
+                        <TextBox
+                            x:Name="SheetSearchTextBox"
+                            Grid.Column="1"
+                            Width="150"
+                            Margin="0"
+                            VerticalContentAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            CaretBrush="{DynamicResource ForegroundBrush}"
+                            FontSize="12"
+                            Foreground="{DynamicResource ForegroundBrush}"
+                            TextChanged="SheetSearchTextBox_TextChanged"
+                            ToolTip="Search (Number / Name / Version / Size)" />
+
+                        <!--  Clear button  -->
+                        <Button
+                            x:Name="ClearSearchButton"
+                            Grid.Column="2"
+                            Width="24"
+                            Height="24"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            Click="ClearSearchButton_Click"
+                            Style="{StaticResource FlatIconButton}"
+                            ToolTip="Clear">
+                            <materialDesign:PackIcon
+                                Width="16"
+                                Height="16"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{DynamicResource IconBrush}"
+                                Kind="CloseCircleOutline" />
+                        </Button>
+                    </Grid>
+                </Border>
+
                 <Grid
                     Grid.Row="0"
                     Margin="0,0,100,0"

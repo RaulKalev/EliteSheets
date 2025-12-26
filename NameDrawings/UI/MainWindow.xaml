@@ -371,14 +371,6 @@
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle}"
                                 IsReadOnly="True" />
 
-                            <!--  Sheet Size  -->
-                            <DataGridTextColumn
-                                Width="75"
-                                Binding="{Binding SheetSize}"
-                                ElementStyle="{StaticResource CenterAlignedCellStyle}"
-                                Header="Suurus"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle_NoRightBorder}"
-                                IsReadOnly="True" />
 
                         </DataGrid.Columns>
                     </DataGrid>
@@ -420,13 +412,6 @@
                                     FontSize="24"
                                     FontWeight="Bold"
                                     IsChecked="True"
-                                    Style="{StaticResource CustomCheckboxStyle}" />
-                                <CheckBox
-                                    x:Name="DxfExportCheckbox"
-                                    Content="DXF"
-                                    FontSize="24"
-                                    FontWeight="Bold"
-                                    IsChecked="False"
                                     Style="{StaticResource CustomCheckboxStyle}" />
                             </StackPanel>
 

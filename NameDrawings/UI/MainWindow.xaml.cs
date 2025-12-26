@@ -53,13 +53,9 @@ namespace EliteSheets
 
         private readonly WindowResizer _windowResizer;
         private bool _isDarkMode = true;
-        private bool _isInitialized;
         private string _templateDxfPath = string.Empty;
 
         // Background scanning state
-        private UIApplication _uiapp;
-        private Queue<SheetItem> _sheetsToScan = new Queue<SheetItem>();
-        private const int SheetsPerIdleTick = 20;
 
         public ObservableCollection<string> ViewTypes { get; set; } = new ObservableCollection<string>();
         public ObservableCollection<string> ViewTemplates { get; set; } = new ObservableCollection<string>();
@@ -113,7 +109,6 @@ namespace EliteSheets
             DataContext = this;
 
             // Data
-            _isInitialized = true;
             LoadExportPathForCurrentProject();
             LoadSheets();
 
@@ -152,8 +147,6 @@ namespace EliteSheets
             _createPrintSettingEvent = ExternalEvent.Create(_createPrintSettingHandler);
 
             // Subscribe to Idling for background paper size scanning
-            _uiapp = new UIApplication(doc.Application);
-            _uiapp.Idling += OnIdling_ScanPaperSizes;
         }
 
         #endregion
@@ -375,13 +368,10 @@ namespace EliteSheets
             var number = (item.Number ?? string.Empty).ToLowerInvariant();
             var name = (item.Name ?? string.Empty).ToLowerInvariant();
             var version = (item.Version ?? string.Empty).ToLowerInvariant();
-            var size = (item.SheetSize ?? string.Empty).ToLowerInvariant();
             var viewName = (item.ViewName ?? string.Empty).ToLowerInvariant();
-
             return number.Contains(q)
                 || name.Contains(q)
                 || version.Contains(q)
-                || size.Contains(q)
                 || viewName.Contains(q);
         }
 
@@ -482,7 +472,7 @@ namespace EliteSheets
         private void LoadSheets()
         {
             Sheets.Clear();
-            _sheetsToScan.Clear();
+            Sheets.Clear();
 
             // 1. Get all sheets
             var sheets = new FilteredElementCollector(_doc)
@@ -525,17 +515,6 @@ namespace EliteSheets
                     IsChecked = false
                 };
 
-                // Quick check for A4 merge sheets
-                if ((sheet.SheetNumber ?? "").Contains("--"))
-                {
-                    item.SheetSize = "A4";
-                }
-                else
-                {
-                    // Defer calculation
-                    item.SheetSize = "Scanning..."; 
-                    _sheetsToScan.Enqueue(item);
-                }
 
                 // Version / Revision (can also be slow, but usually okay-ish)
                 string versionText = sheet.get_Parameter(BuiltInParameter.SHEET_CURRENT_REVISION)?.AsString();
@@ -562,50 +541,6 @@ namespace EliteSheets
             }
         }
 
-        private void OnIdling_ScanPaperSizes(object sender, Autodesk.Revit.UI.Events.IdlingEventArgs e)
-        {
-            if (_sheetsToScan.Count == 0)
-            {
-                // Done scanning, unsubscribe
-                if (_uiapp != null)
-                {
-                    _uiapp.Idling -= OnIdling_ScanPaperSizes;
-                    _uiapp = null;
-                }
-                return;
-            }
-
-            // Process a chunk of sheets
-            int count = 0;
-            while (count < SheetsPerIdleTick && _sheetsToScan.Count > 0)
-            {
-                var item = _sheetsToScan.Dequeue();
-                var sheet = _doc.GetElement(item.Id) as ViewSheet;
-                
-                if (sheet != null)
-                {
-                    // Logic from PaperSizeHelper, now run in background
-                    var outline = sheet.Outline;
-                    if (outline != null)
-                    {
-                        var width = UnitUtils.ConvertFromInternalUnits(outline.Max.U - outline.Min.U, UnitTypeId.Millimeters);
-                        var height = UnitUtils.ConvertFromInternalUnits(outline.Max.V - outline.Min.V, UnitTypeId.Millimeters);
-                        item.SheetSize = PaperSizeHelper.GetPaperSizeLabel(width, height);
-                    }
-                    else
-                    {
-                        item.SheetSize = "Unknown";
-                    }
-                }
-                count++;
-            }
-            
-            // If we have more work, ensure we get called back quickly
-            if (_sheetsToScan.Count > 0)
-            {
-                e.SetRaiseWithoutDelay();
-            }
-        }
 
         private void LoadDwgExportSetups()
         {
@@ -697,7 +632,7 @@ namespace EliteSheets
 
             var exportDwg = (LogicalTreeHelper.FindLogicalNode(this, "DwgExportCheckbox") as CheckBox)?.IsChecked == true;
             var exportPdf = (LogicalTreeHelper.FindLogicalNode(this, "PdfExportCheckbox") as CheckBox)?.IsChecked == true;
-            var exportDxf = (LogicalTreeHelper.FindLogicalNode(this, "DxfExportCheckbox") as CheckBox)?.IsChecked == true;
+            var exportDxf = false; // DXF button removed
 
             if (!exportDwg && !exportPdf && !exportDxf)
             {
@@ -878,11 +813,6 @@ namespace EliteSheets
                 Closed -= MainWindow_Closed;
                 
                 // Cleanup Idling if still active
-                if (_uiapp != null)
-                {
-                    _uiapp.Idling -= OnIdling_ScanPaperSizes;
-                    _uiapp = null;
-                }
 
                 SaveThemeState();
 

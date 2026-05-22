@@ -1,6 +1,7 @@
 ﻿using Autodesk.Revit.DB;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 
 namespace EliteSheets.Exports
@@ -18,8 +19,9 @@ namespace EliteSheets.Exports
             _exportFolder = exportFolder;
         }
 
-        public bool ExportSheet(ViewSheet sheet)
+        public bool ExportSheet(ViewSheet sheet, out string errorMessage)
         {
+            errorMessage = null;
             try
             {
                 ICollection<ElementId> sheetIds = new List<ElementId> { sheet.Id };
@@ -29,8 +31,10 @@ namespace EliteSheets.Exports
 
                 return _doc.Export(_exportFolder, subfolderName, sheetIds, _options);
             }
-            catch
+            catch (Exception ex)
             {
+                errorMessage = ex.Message;
+                Debug.WriteLine($"DWG export failed for {sheet.SheetNumber}: {ex}");
                 return false;
             }
         }

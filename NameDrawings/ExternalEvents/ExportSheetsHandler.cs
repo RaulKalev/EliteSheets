@@ -100,19 +100,33 @@ namespace EliteSheets.ExternalEvents
             bool success = false;
             var options = DWGExportOptions.GetPredefinedOptions(Doc, ExportSetupName);
             var dwgExporter = new DwgExportService(Doc, options, ExportPath);
+            var postErrors = new List<string>();
 
             foreach (var sheet in singles)
             {
                 try
                 {
-                    if (dwgExporter.ExportSheet(sheet))
+                    if (dwgExporter.ExportSheet(sheet, out string failMsg))
+                    {
                         success = true;
+                    }
+                    else if (!string.IsNullOrEmpty(failMsg))
+                    {
+                        postErrors.Add($"Sheet {sheet.SheetNumber}: {failMsg}");
+                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"DWG export failed for {sheet.Name}: {ex.Message}");
+                    postErrors.Add($"Sheet {sheet.SheetNumber}: {ex.Message}");
                 }
             }
+
+            if (postErrors.Count > 0)
+            {
+                TaskDialog.Show("DWG Export Errors", string.Join("\n", postErrors));
+            }
+
             return success;
         }
 

@@ -77,9 +77,10 @@ namespace EliteSheets.Services
                             UseShellExecute = true
                         });
                     }
-                    catch
+                    catch (Exception ex)
                     {
                         // Non-fatal if we can't open the folder
+                        Logger.Log("Failed to open output folder after export.", ex);
                     }
                 }
 
@@ -103,9 +104,10 @@ namespace EliteSheets.Services
                 {
                     options = DXFExportOptions.GetPredefinedOptions(doc, setupName);
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Ignore if setup not found or not applicable; fall back to defaults
+                    Logger.Log($"Failed to load predefined DXF export options for setup '{setupName}'. Falling back to default options.", ex);
                     options = null;
                 }
             }

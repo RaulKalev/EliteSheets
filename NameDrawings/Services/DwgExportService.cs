@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using EliteSheets.Services;
 
 namespace EliteSheets.Exports
 {
@@ -29,8 +30,9 @@ namespace EliteSheets.Exports
 
                 return _doc.Export(_exportFolder, subfolderName, sheetIds, _options);
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.Log($"DWG export failed for sheet {sheet.SheetNumber}.", ex);
                 return false;
             }
         }

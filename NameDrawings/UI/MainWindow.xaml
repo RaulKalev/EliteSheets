@@ -317,9 +317,11 @@
                     BorderBrush="Transparent"
                     BorderThickness="1"
                     UniformCornerRadius="10">
-                    <DataGrid
-                        x:Name="SheetsDataGrid"
-                        AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
+                    <Grid>
+                        <DataGrid
+                            x:Name="SheetsDataGrid"
+                            AutomationProperties.Name="Jooniste nimekiri"
+                            AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
                         AutoGenerateColumns="False"
                         Background="{DynamicResource SecondaryBackgroundBrush}"
                         BorderThickness="0"
@@ -398,6 +400,26 @@
 
                         </DataGrid.Columns>
                     </DataGrid>
+
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Foreground="{DynamicResource ForegroundBrush}"
+                        IsHitTestVisible="False"
+                        Text="Ühtegi joonist ei leitud">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasItems, ElementName=SheetsDataGrid}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    </Grid>
                 </materialDesign:Card>
 
                 <!--  Bottom controls (Row 2)  -->

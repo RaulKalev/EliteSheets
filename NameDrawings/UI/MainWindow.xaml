@@ -317,87 +317,109 @@
                     BorderBrush="Transparent"
                     BorderThickness="1"
                     UniformCornerRadius="10">
-                    <DataGrid
-                        x:Name="SheetsDataGrid"
-                        AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
-                        AutoGenerateColumns="False"
-                        Background="{DynamicResource SecondaryBackgroundBrush}"
-                        BorderThickness="0"
-                        CanUserAddRows="False"
-                        CanUserResizeRows="False"
-                        Foreground="{DynamicResource ForegroundBrush}"
-                        GridLinesVisibility="None"
-                        HeadersVisibility="Column"
-                        ItemsSource="{Binding Sheets}"
-                        PreviewMouseLeftButtonDown="SheetsDataGrid_PreviewMouseLeftButtonDown"
-                        RowBackground="{DynamicResource PrimaryBackgroundBrush}"
-                        RowHeaderWidth="0"
-                        RowHeight="20"
-                        SelectionMode="Extended"
-                        SelectionUnit="FullRow">
+                    <Grid>
+                        <DataGrid
+                            x:Name="SheetsDataGrid"
+                            AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
+                            AutoGenerateColumns="False"
+                            Background="{DynamicResource SecondaryBackgroundBrush}"
+                            BorderThickness="0"
+                            CanUserAddRows="False"
+                            CanUserResizeRows="False"
+                            Foreground="{DynamicResource ForegroundBrush}"
+                            GridLinesVisibility="None"
+                            HeadersVisibility="Column"
+                            ItemsSource="{Binding Sheets}"
+                            PreviewMouseLeftButtonDown="SheetsDataGrid_PreviewMouseLeftButtonDown"
+                            RowBackground="{DynamicResource PrimaryBackgroundBrush}"
+                            RowHeaderWidth="0"
+                            RowHeight="20"
+                            SelectionMode="Extended"
+                            SelectionUnit="FullRow">
 
-                        <DataGrid.Columns>
-                            <!--  Checkbox column  -->
-                            <DataGridTemplateColumn Width="35" HeaderStyle="{StaticResource MultiRowHeaderStyle}">
-                                <DataGridTemplateColumn.HeaderTemplate>
-                                    <DataTemplate>
-                                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <CheckBox
-                                                x:Name="CheckAllBox"
-                                                AutomationProperties.Name="Select all sheets"
-                                                Click="CheckAllBox_Click"
-                                                Style="{StaticResource DatagridCheckboxStyle}"
-                                                ToolTip="Check/Uncheck All" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.HeaderTemplate>
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <CheckBox
-                                                Click="Checkbox_Click"
-                                                IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                Style="{StaticResource DatagridCheckboxStyle}">
-                                                <AutomationProperties.Name>
-                                                    <MultiBinding StringFormat="Select sheet {0} - {1}">
-                                                        <Binding Path="Number" />
-                                                        <Binding Path="Name" />
-                                                    </MultiBinding>
-                                                </AutomationProperties.Name>
-                                            </CheckBox>
-                                        </Grid>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                            <DataGrid.Columns>
+                                <!--  Checkbox column  -->
+                                <DataGridTemplateColumn Width="35" HeaderStyle="{StaticResource MultiRowHeaderStyle}">
+                                    <DataGridTemplateColumn.HeaderTemplate>
+                                        <DataTemplate>
+                                            <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <CheckBox
+                                                    x:Name="CheckAllBox"
+                                                    AutomationProperties.Name="Select all sheets"
+                                                    Click="CheckAllBox_Click"
+                                                    Style="{StaticResource DatagridCheckboxStyle}"
+                                                    ToolTip="Check/Uncheck All" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.HeaderTemplate>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <CheckBox
+                                                    Click="Checkbox_Click"
+                                                    IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    Style="{StaticResource DatagridCheckboxStyle}">
+                                                    <AutomationProperties.Name>
+                                                        <MultiBinding StringFormat="Select sheet {0} - {1}">
+                                                            <Binding Path="Number" />
+                                                            <Binding Path="Name" />
+                                                        </MultiBinding>
+                                                    </AutomationProperties.Name>
+                                                </CheckBox>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                            <!--  Sheet Number  -->
-                            <DataGridTextColumn
-                                Width="*"
-                                Binding="{Binding Number}"
-                                Header="Joonise Number"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
-                                IsReadOnly="True" />
+                                <!--  Sheet Number  -->
+                                <DataGridTextColumn
+                                    Width="*"
+                                    Binding="{Binding Number}"
+                                    Header="Joonise Number"
+                                    HeaderStyle="{StaticResource MultiRowHeaderStyle}"
+                                    IsReadOnly="True" />
 
-                            <!--  Sheet Name  -->
-                            <DataGridTextColumn
-                                Width="*"
-                                Binding="{Binding Name}"
-                                Header="Joonise nimi"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
-                                IsReadOnly="True" />
+                                <!--  Sheet Name  -->
+                                <DataGridTextColumn
+                                    Width="*"
+                                    Binding="{Binding Name}"
+                                    Header="Joonise nimi"
+                                    HeaderStyle="{StaticResource MultiRowHeaderStyle}"
+                                    IsReadOnly="True" />
 
-                            <!--  Versioon (NEW)  -->
-                            <DataGridTextColumn
-                                Width="75"
-                                Binding="{Binding Version}"
-                                ElementStyle="{StaticResource CenterAlignedCellStyle}"
-                                Header="Versioon"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
-                                IsReadOnly="True" />
+                                <!--  Versioon (NEW)  -->
+                                <DataGridTextColumn
+                                    Width="75"
+                                    Binding="{Binding Version}"
+                                    ElementStyle="{StaticResource CenterAlignedCellStyle}"
+                                    Header="Versioon"
+                                    HeaderStyle="{StaticResource MultiRowHeaderStyle}"
+                                    IsReadOnly="True" />
 
 
-                        </DataGrid.Columns>
-                    </DataGrid>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- Empty State Message -->
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="16"
+                            Foreground="{DynamicResource IconForegroundBrush}"
+                            IsHitTestVisible="False"
+                            Text="Ühtegi joonist ei leitud">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Items.Count, ElementName=SheetsDataGrid}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                 </materialDesign:Card>
 
                 <!--  Bottom controls (Row 2)  -->

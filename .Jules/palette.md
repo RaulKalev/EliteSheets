@@ -1,3 +1,3 @@
-## 2026-05-24 - Added Tooltips and Accessibility Tags to WPF Elements
-**Learning:** Adding screen reader support and general tooltips in WPF significantly improves accessibility and UX for forms.
-**Action:** Always check interactive XAML elements for `AutomationProperties.Name`, `AutomationProperties.LabeledBy`, and `ToolTip` attributes.
+## 2025-02-20 - Adding Empty States inside MaterialDesign Cards in WPF
+**Learning:** When using the MaterialDesignThemes library in WPF, the `materialDesign:Card` component can only accept a single child element. Adding an empty state directly as a sibling to a `DataGrid` will cause a build error.
+**Action:** Always wrap the `DataGrid` and its empty state overlay (like a `TextBlock`) inside a layout container like a `Grid` when they are inside a `materialDesign:Card`. Use a `DataTrigger` bound to the `Items.Count` property of the `DataGrid` to toggle the visibility of the empty state.

@@ -317,10 +317,11 @@
                     BorderBrush="Transparent"
                     BorderThickness="1"
                     UniformCornerRadius="10">
-                    <DataGrid
-                        x:Name="SheetsDataGrid"
-                        AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
-                        AutoGenerateColumns="False"
+                    <Grid>
+                        <DataGrid
+                            x:Name="SheetsDataGrid"
+                            AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
+                            AutoGenerateColumns="False"
                         Background="{DynamicResource SecondaryBackgroundBrush}"
                         BorderThickness="0"
                         CanUserAddRows="False"
@@ -398,6 +399,25 @@
 
                         </DataGrid.Columns>
                     </DataGrid>
+                    <TextBlock
+                        Text="Ühtegi joonist ei leitud"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Foreground="{DynamicResource ForegroundBrush}"
+                        Opacity="0.6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Items.Count, ElementName=SheetsDataGrid}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    </Grid>
                 </materialDesign:Card>
 
                 <!--  Bottom controls (Row 2)  -->

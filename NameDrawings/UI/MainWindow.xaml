@@ -317,8 +317,28 @@
                     BorderBrush="Transparent"
                     BorderThickness="1"
                     UniformCornerRadius="10">
-                    <DataGrid
-                        x:Name="SheetsDataGrid"
+                    <Grid>
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="16"
+                            Foreground="{DynamicResource ForegroundBrush}"
+                            Opacity="0.6"
+                            Text="Ühtegi joonist ei leitud"
+                            Panel.ZIndex="1">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Items.Count, ElementName=SheetsDataGrid}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <DataGrid
+                            x:Name="SheetsDataGrid"
                         AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
                         AutoGenerateColumns="False"
                         Background="{DynamicResource SecondaryBackgroundBrush}"
@@ -397,7 +417,8 @@
 
 
                         </DataGrid.Columns>
-                    </DataGrid>
+                        </DataGrid>
+                    </Grid>
                 </materialDesign:Card>
 
                 <!--  Bottom controls (Row 2)  -->

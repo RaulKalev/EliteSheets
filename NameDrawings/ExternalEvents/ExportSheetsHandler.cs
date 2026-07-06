@@ -36,6 +36,8 @@ namespace EliteSheets.ExternalEvents
             if (Doc == null || UiDoc == null || SheetsToExport == null || string.IsNullOrWhiteSpace(ExportPath))
                 return;
 
+            CleanupStaleTempFolders();
+
             bool anySuccess = false;
 
             // 1. Partition sheets into Singles vs Groups
@@ -136,6 +138,7 @@ namespace EliteSheets.ExternalEvents
         {
             bool success = false;
             var pdfExporter = new PdfExportService(Doc);
+            var postErrors = new List<string>();
 
             // Singles
             foreach (var sheet in partition.Singles)
@@ -143,11 +146,19 @@ namespace EliteSheets.ExternalEvents
                 try
                 {
                     if (pdfExporter.ExportSheetAsPdf(sheet, ExportPath))
+                    {
                         success = true;
+                    }
+                    else
+                    {
+                        string target = Path.Combine(ExportPath, sheet.SheetNumber + ".pdf");
+                        postErrors.Add($"Sheet {sheet.SheetNumber}: PDF export failed.{LockHint(target)}");
+                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"PDF export failed for {sheet.Name}: {ex.Message}");
+                    postErrors.Add($"Sheet {sheet.SheetNumber}: {ex.Message}");
                 }
             }
 
@@ -166,12 +177,25 @@ namespace EliteSheets.ExternalEvents
                 try
                 {
                     if (pdfExporter.ExportCombinedPdf(orderedSheets, ExportPath, outputName))
+                    {
                         success = true;
+                    }
+                    else
+                    {
+                        string target = Path.Combine(ExportPath, outputName + ".pdf");
+                        postErrors.Add($"Combined PDF failed for group {groupNumber}.{LockHint(target)}");
+                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"Combined PDF export failed for group '{groupNumber}': {ex.Message}");
+                    postErrors.Add($"Combined PDF failed for group {groupNumber}: {ex.Message}");
                 }
+            }
+
+            if (postErrors.Count > 0)
+            {
+                TaskDialog.Show("PDF Export Errors", string.Join("\n", postErrors));
             }
 
             return success;
@@ -248,8 +272,10 @@ namespace EliteSheets.ExternalEvents
                 return false;
             }
 
-            // Temp folder
-            string tempRoot = Path.Combine(ExportPath, "_tmp_dxf_merge_" + Guid.NewGuid().ToString("N"));
+            // Temp folder lives in %TEMP%, not in the export folder: export folders are
+            // often cloud-synced (Dropbox), and sync/antivirus locks on freshly written
+            // temp files broke the in-place rewrite and left junk folders behind.
+            string tempRoot = Path.Combine(GetScratchRoot(), "_tmp_dxf_merge_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempRoot);
 
             var dxfExporter = new EliteSheets.Services.DxfExportService();
@@ -268,7 +294,7 @@ namespace EliteSheets.ExternalEvents
                         // Promote all in temp
                         foreach(var f in Directory.EnumerateFiles(tempRoot, "*.dxf"))
                         {
-                            try { promoter.PromotePaperToModel(f); }
+                            try { RetryOnSharingViolation(() => promoter.PromotePaperToModel(f)); }
                             catch (Exception ex) { postErrors.Add($"(temp) {Path.GetFileName(f)}: {ex.Message}"); }
                         }
 
@@ -297,6 +323,12 @@ namespace EliteSheets.ExternalEvents
                             string combinedName = _groupingService.BuildCombinedFileName(orderedSheets.First().SheetNumber, groupNumber);
                             string outPath = Path.Combine(ExportPath, combinedName + ".dxf");
 
+                            if (IsFileLocked(outPath))
+                            {
+                                postErrors.Add($"Merge failed for group {groupNumber}: '{combinedName}.dxf' is open in another program. Close it and export again.");
+                                continue;
+                            }
+
                             try
                             {
                                 merger.MergeIntoTemplate(
@@ -323,7 +355,7 @@ namespace EliteSheets.ExternalEvents
             }
             finally
             {
-                try { Directory.Delete(tempRoot, true); } catch { }
+                TryDeleteDirectory(tempRoot);
             }
 
             if (postErrors.Count > 0)
@@ -352,6 +384,108 @@ namespace EliteSheets.ExternalEvents
                     return fp;
             }
             return null;
+        }
+
+        // --- Temp file hygiene ---
+
+        private static string GetScratchRoot() => Path.Combine(Path.GetTempPath(), "EliteSheets");
+
+        /// <summary>
+        /// Removes merge workspaces left behind by failed or crashed runs — both in the
+        /// scratch root and in the export folder (where older versions created them).
+        /// Only folders untouched for over an hour are removed, so an export running
+        /// concurrently on another machine syncing into the same folder is never disturbed.
+        /// </summary>
+        private void CleanupStaleTempFolders()
+        {
+            SweepStaleTempFolders(GetScratchRoot());
+            SweepStaleTempFolders(ExportPath);
+        }
+
+        private static void SweepStaleTempFolders(string root)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return;
+
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                foreach (var dir in Directory.EnumerateDirectories(root, "_tmp_dxf_merge_*", SearchOption.TopDirectoryOnly))
+                {
+                    try
+                    {
+                        if (Directory.GetLastWriteTimeUtc(dir) <= cutoff)
+                            TryDeleteDirectory(dir);
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Stale temp folder sweep failed in '{root}'.", ex);
+            }
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    if (!Directory.Exists(path)) return;
+
+                    foreach (var f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                    {
+                        try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+                    }
+
+                    Directory.Delete(path, true);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    if (attempt == 2)
+                    {
+                        Logger.Log($"Could not delete temp folder '{path}'. It will be swept on the next export.", ex);
+                        return;
+                    }
+                    System.Threading.Thread.Sleep(250);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Retries an IO action a few times — cloud-sync clients and antivirus scanners
+        /// take short-lived locks on freshly written files.
+        /// </summary>
+        private static void RetryOnSharingViolation(Action action)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try { action(); return; }
+                catch (IOException) when (attempt < 2)
+                {
+                    System.Threading.Thread.Sleep(200);
+                }
+            }
+        }
+
+        private static bool IsFileLocked(string path)
+        {
+            if (!File.Exists(path)) return false;
+            try
+            {
+                using (File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+                return false;
+            }
+            catch (IOException) { return true; }
+            catch (UnauthorizedAccessException) { return true; }
+        }
+
+        private static string LockHint(string targetPath)
+        {
+            return IsFileLocked(targetPath)
+                ? $" The file '{Path.GetFileName(targetPath)}' is open in another program — close it and export again."
+                : string.Empty;
         }
 
         private void ShowCompletionDialog(bool anySuccess)

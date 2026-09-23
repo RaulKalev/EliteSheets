@@ -393,7 +393,15 @@ namespace EliteSheets
             ClearSearchButton.IsEnabled = !string.IsNullOrWhiteSpace(SheetSearchTextBox.Text);
         }
 
-        private void SaveExportPathForCurrentProject(string exportPath)
+        private const string ExportPathsKey = "ExportPaths";
+        private const string PdfExportPathsKey = "PdfExportPaths";
+        private const string DwgExportPathsKey = "DwgExportPaths";
+        private const string SeparateExportFoldersKey = "SeparateExportFolders";
+
+        /// <summary>
+        /// Stores a value under config[sectionKey][projectName], preserving all other keys.
+        /// </summary>
+        private void SaveProjectSetting(string sectionKey, string value)
         {
             try
             {
@@ -409,28 +417,29 @@ namespace EliteSheets
                              ?? new Dictionary<string, object>();
                 }
 
-                Dictionary<string, string> exportPaths;
-                if (config.TryGetValue("ExportPaths", out object rawPaths) &&
-                    rawPaths is Newtonsoft.Json.Linq.JObject jObj)
+                Dictionary<string, string> section;
+                if (config.TryGetValue(sectionKey, out object rawSection) &&
+                    rawSection is Newtonsoft.Json.Linq.JObject jObj)
                 {
-                    exportPaths = jObj.ToObject<Dictionary<string, string>>();
+                    section = jObj.ToObject<Dictionary<string, string>>();
                 }
                 else
                 {
-                    exportPaths = new Dictionary<string, string>();
+                    section = new Dictionary<string, string>();
                 }
 
-                exportPaths[projectName] = exportPath;
-                config["ExportPaths"] = exportPaths;
+                section[projectName] = value;
+                config[sectionKey] = section;
 
                 if (!config.ContainsKey("IsDarkMode"))
                     config["IsDarkMode"] = _isDarkMode;
 
+                Directory.CreateDirectory(Path.GetDirectoryName(ConfigFilePath));
                 File.WriteAllText(ConfigFilePath, JsonConvert.SerializeObject(config, Formatting.Indented));
             }
             catch (Exception ex)
             {
-                RevitTaskDialog.Show("Save Error", $"Failed to save export path:\n{ex.Message}");
+                RevitTaskDialog.Show("Save Error", $"Failed to save export settings:\n{ex.Message}");
             }
         }
 
@@ -442,24 +451,67 @@ namespace EliteSheets
 
                 var json = File.ReadAllText(ConfigFilePath);
                 var config = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-                if (config == null || !config.ContainsKey("ExportPaths")) return;
+                if (config == null) return;
 
-                if (config["ExportPaths"] is Newtonsoft.Json.Linq.JObject jObj)
+                var projectName = Path.GetFileName(_doc.PathName);
+                if (string.IsNullOrEmpty(projectName)) return;
+
+                string Get(string sectionKey)
                 {
-                    var exportPaths = jObj.ToObject<Dictionary<string, string>>();
-                    var projectName = Path.GetFileName(_doc.PathName);
-
-                    if (!string.IsNullOrEmpty(projectName) &&
-                        exportPaths.TryGetValue(projectName, out var savedPath))
-                    {
-                        ExportPathTextBox.Text = savedPath;
-                    }
+                    if (config.TryGetValue(sectionKey, out var raw) &&
+                        raw is Newtonsoft.Json.Linq.JObject jObj &&
+                        jObj.ToObject<Dictionary<string, string>>().TryGetValue(projectName, out var v))
+                        return v;
+                    return null;
                 }
+
+                var savedPath = Get(ExportPathsKey);
+                if (savedPath != null) ExportPathTextBox.Text = savedPath;
+
+                PdfExportPathTextBox.Text = Get(PdfExportPathsKey) ?? string.Empty;
+                DwgExportPathTextBox.Text = Get(DwgExportPathsKey) ?? string.Empty;
+
+                bool separate = string.Equals(Get(SeparateExportFoldersKey), "true", StringComparison.OrdinalIgnoreCase);
+                SeparateFoldersCheckbox.IsChecked = separate;
+                UpdateFolderPanels();
             }
             catch (Exception ex)
             {
                 RevitTaskDialog.Show("Load Error", $"Failed to load export path:\n{ex.Message}");
             }
+        }
+
+        private bool UseSeparateFolders => SeparateFoldersCheckbox?.IsChecked == true;
+
+        private void UpdateFolderPanels()
+        {
+            SingleFolderPanel.Visibility = UseSeparateFolders ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+            SeparateFoldersPanel.Visibility = UseSeparateFolders ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        }
+
+        private void SeparateFoldersCheckbox_Click(object sender, RoutedEventArgs e)
+        {
+            // Seed empty paths from the shared folder so switching modes is painless
+            if (UseSeparateFolders)
+            {
+                var shared = ExportPathTextBox.Text?.Trim();
+                if (!string.IsNullOrWhiteSpace(shared) && Directory.Exists(shared))
+                {
+                    if (string.IsNullOrWhiteSpace(PdfExportPathTextBox.Text))
+                    {
+                        PdfExportPathTextBox.Text = shared;
+                        SaveProjectSetting(PdfExportPathsKey, shared);
+                    }
+                    if (string.IsNullOrWhiteSpace(DwgExportPathTextBox.Text))
+                    {
+                        DwgExportPathTextBox.Text = shared;
+                        SaveProjectSetting(DwgExportPathsKey, shared);
+                    }
+                }
+            }
+
+            UpdateFolderPanels();
+            SaveProjectSetting(SeparateExportFoldersKey, UseSeparateFolders ? "true" : "false");
         }
 
         #endregion
@@ -584,23 +636,34 @@ namespace EliteSheets
         }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)
+            => BrowseForFolder("Select export folder", ExportPathTextBox, ExportPathsKey);
+
+        private void BrowsePdfButton_Click(object sender, RoutedEventArgs e)
+            => BrowseForFolder("Select PDF export folder", PdfExportPathTextBox, PdfExportPathsKey);
+
+        private void BrowseDwgButton_Click(object sender, RoutedEventArgs e)
+            => BrowseForFolder("Select DWG export folder", DwgExportPathTextBox, DwgExportPathsKey);
+
+        private void BrowseForFolder(string description, System.Windows.Controls.TextBox target, string configKey)
         {
             try
             {
                 using (var dlg = new WinForms.FolderBrowserDialog())
                 {
-                    dlg.Description = "Select export folder";
+                    dlg.Description = description;
                     dlg.ShowNewFolderButton = true;
 
-                    var initial = ExportPathTextBox.Text;
+                    var initial = target.Text;
+                    if (string.IsNullOrWhiteSpace(initial) || !Directory.Exists(initial))
+                        initial = ExportPathTextBox.Text;
                     dlg.SelectedPath = (!string.IsNullOrWhiteSpace(initial) && Directory.Exists(initial))
                         ? initial
                         : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
 
                     if (dlg.ShowDialog() == WinForms.DialogResult.OK)
                     {
-                        ExportPathTextBox.Text = dlg.SelectedPath;
-                        SaveExportPathForCurrentProject(dlg.SelectedPath);
+                        target.Text = dlg.SelectedPath;
+                        SaveProjectSetting(configKey, dlg.SelectedPath);
                     }
                 }
             }
@@ -620,13 +683,6 @@ namespace EliteSheets
                 return;
             }
 
-            var exportPath = ExportPathTextBox.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(exportPath) || !Directory.Exists(exportPath))
-            {
-                RevitTaskDialog.Show("Error", "Please select a valid export folder.");
-                return;
-            }
-
             var exportDwg = (LogicalTreeHelper.FindLogicalNode(this, "DwgExportCheckbox") as CheckBox)?.IsChecked == true;
             var exportPdf = (LogicalTreeHelper.FindLogicalNode(this, "PdfExportCheckbox") as CheckBox)?.IsChecked == true;
             var exportDxf = false; // DXF button removed
@@ -635,6 +691,33 @@ namespace EliteSheets
             {
                 RevitTaskDialog.Show("Info", "Neither DWG, DXF nor PDF export is selected.");
                 return;
+            }
+
+            string exportPath = null, pdfExportPath = null, dwgExportPath = null;
+            if (UseSeparateFolders)
+            {
+                pdfExportPath = PdfExportPathTextBox.Text?.Trim();
+                dwgExportPath = DwgExportPathTextBox.Text?.Trim();
+
+                if (exportPdf && (string.IsNullOrWhiteSpace(pdfExportPath) || !Directory.Exists(pdfExportPath)))
+                {
+                    RevitTaskDialog.Show("Error", "Please select a valid PDF export folder.");
+                    return;
+                }
+                if ((exportDwg || exportDxf) && (string.IsNullOrWhiteSpace(dwgExportPath) || !Directory.Exists(dwgExportPath)))
+                {
+                    RevitTaskDialog.Show("Error", "Please select a valid DWG export folder.");
+                    return;
+                }
+            }
+            else
+            {
+                exportPath = ExportPathTextBox.Text?.Trim();
+                if (string.IsNullOrWhiteSpace(exportPath) || !Directory.Exists(exportPath))
+                {
+                    RevitTaskDialog.Show("Error", "Please select a valid export folder.");
+                    return;
+                }
             }
 
             var exportSetup = DwgExportComboBox.SelectedItem as ExportDWGSettings;
@@ -703,6 +786,8 @@ namespace EliteSheets
             _exportHandler.Doc = _doc;
             _exportHandler.SheetsToExport = sheetElements;
             _exportHandler.ExportPath = exportPath;
+            _exportHandler.PdfExportPath = pdfExportPath;
+            _exportHandler.DwgExportPath = dwgExportPath;
             _exportHandler.ExportSetupName = exportSetup?.Name;
             _exportHandler.ExportPdf = exportPdf;
             _exportHandler.ExportDwg = exportDwg;

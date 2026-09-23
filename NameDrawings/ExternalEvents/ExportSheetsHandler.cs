@@ -23,6 +23,10 @@ namespace EliteSheets.ExternalEvents
         public List<ViewSheet> SheetsToExport { get; set; } = new List<ViewSheet>();
 
         public string ExportPath { get; set; }
+        /// <summary>Optional PDF destination; falls back to <see cref="ExportPath"/> when empty.</summary>
+        public string PdfExportPath { get; set; }
+        /// <summary>Optional DWG/DXF destination; falls back to <see cref="ExportPath"/> when empty.</summary>
+        public string DwgExportPath { get; set; }
         public string ExportSetupName { get; set; }
         public bool ExportPdf { get; set; } = true;
         public bool ExportDwg { get; set; } = true;
@@ -31,9 +35,16 @@ namespace EliteSheets.ExternalEvents
 
         private readonly SheetGroupingService _groupingService = new SheetGroupingService();
 
+        private string PdfFolder => string.IsNullOrWhiteSpace(PdfExportPath) ? ExportPath : PdfExportPath;
+        private string CadFolder => string.IsNullOrWhiteSpace(DwgExportPath) ? ExportPath : DwgExportPath;
+
         public void Execute(UIApplication app)
         {
-            if (Doc == null || UiDoc == null || SheetsToExport == null || string.IsNullOrWhiteSpace(ExportPath))
+            if (Doc == null || UiDoc == null || SheetsToExport == null)
+                return;
+            if (ExportPdf && string.IsNullOrWhiteSpace(PdfFolder))
+                return;
+            if ((ExportDwg || ExportDxf) && string.IsNullOrWhiteSpace(CadFolder))
                 return;
 
             bool anySuccess = false;
@@ -99,7 +110,7 @@ namespace EliteSheets.ExternalEvents
         {
             bool success = false;
             var options = DWGExportOptions.GetPredefinedOptions(Doc, ExportSetupName);
-            var dwgExporter = new DwgExportService(Doc, options, ExportPath);
+            var dwgExporter = new DwgExportService(Doc, options, CadFolder);
             var postErrors = new List<string>();
 
             foreach (var sheet in singles)
@@ -142,7 +153,7 @@ namespace EliteSheets.ExternalEvents
             {
                 try
                 {
-                    if (pdfExporter.ExportSheetAsPdf(sheet, ExportPath))
+                    if (pdfExporter.ExportSheetAsPdf(sheet, PdfFolder))
                         success = true;
                 }
                 catch (Exception ex)
@@ -165,7 +176,7 @@ namespace EliteSheets.ExternalEvents
 
                 try
                 {
-                    if (pdfExporter.ExportCombinedPdf(orderedSheets, ExportPath, outputName))
+                    if (pdfExporter.ExportCombinedPdf(orderedSheets, PdfFolder, outputName))
                         success = true;
                 }
                 catch (Exception ex)
@@ -191,12 +202,15 @@ namespace EliteSheets.ExternalEvents
             var ids = singles.Select(s => s.Id).ToList();
             if (ids.Count == 0) return false;
 
+            string outFolder = CadFolder;
+            Directory.CreateDirectory(outFolder);
+
             // Snapshot existing DXFs to identify new ones
             var pre = new HashSet<string>(
-                Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly),
+                Directory.EnumerateFiles(outFolder, "*.dxf", SearchOption.TopDirectoryOnly),
                 StringComparer.OrdinalIgnoreCase);
 
-            if (!dxfExporter.Export(Doc, ids, ExportPath, "DXF_Sheets", ExportSetupName, false, out string failureMsg))
+            if (!dxfExporter.Export(Doc, ids, outFolder,"DXF_Sheets", ExportSetupName, false, out string failureMsg))
             {
                  Debug.WriteLine($"DXF export (singles) failed: {failureMsg}");
             }
@@ -205,14 +219,14 @@ namespace EliteSheets.ExternalEvents
                  success = true;
                  
                  // Identify newly created files
-                 var newFiles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
+                 var newFiles = Directory.EnumerateFiles(outFolder, "*.dxf", SearchOption.TopDirectoryOnly)
                                          .Where(p => !pre.Contains(p))
                                          .ToList();
                  
                  if (newFiles.Count == 0)
                  {
                      var cutoff = DateTime.UtcNow.AddMinutes(-2);
-                     newFiles = Directory.EnumerateFiles(ExportPath, "*.dxf", SearchOption.TopDirectoryOnly)
+                     newFiles = Directory.EnumerateFiles(outFolder, "*.dxf", SearchOption.TopDirectoryOnly)
                                          .Where(p => File.GetLastWriteTimeUtc(p) >= cutoff)
                                          .ToList();
                  }
@@ -249,7 +263,7 @@ namespace EliteSheets.ExternalEvents
             }
 
             // Temp folder
-            string tempRoot = Path.Combine(ExportPath, "_tmp_dxf_merge_" + Guid.NewGuid().ToString("N"));
+            string tempRoot = Path.Combine(CadFolder, "_tmp_dxf_merge_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempRoot);
 
             var dxfExporter = new EliteSheets.Services.DxfExportService();
@@ -295,7 +309,7 @@ namespace EliteSheets.ExternalEvents
                             if (sourcePaths.Count == 0) continue;
 
                             string combinedName = _groupingService.BuildCombinedFileName(orderedSheets.First().SheetNumber, groupNumber);
-                            string outPath = Path.Combine(ExportPath, combinedName + ".dxf");
+                            string outPath = Path.Combine(CadFolder, combinedName + ".dxf");
 
                             try
                             {
@@ -364,20 +378,35 @@ namespace EliteSheets.ExternalEvents
                     TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
                     TaskDialogResult.No);
 
-                if (result == TaskDialogResult.Yes && Directory.Exists(ExportPath))
+                if (result == TaskDialogResult.Yes)
                 {
-                    Process.Start(new ProcessStartInfo
+                    foreach (var folder in GetUsedFolders())
                     {
-                        FileName = ExportPath,
-                        UseShellExecute = true,
-                        Verb = "open"
-                    });
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = folder,
+                            UseShellExecute = true,
+                            Verb = "open"
+                        });
+                    }
                 }
             }
             else
             {
                 TaskDialog.Show("EliteSheets - Export Failed", "Export failed for all selected sheets.");
             }
+        }
+
+        private IEnumerable<string> GetUsedFolders()
+        {
+            var folders = new List<string>();
+            if (ExportDwg || ExportDxf) folders.Add(CadFolder);
+            if (ExportPdf) folders.Add(PdfFolder);
+
+            return folders
+                .Where(f => !string.IsNullOrWhiteSpace(f) && Directory.Exists(f))
+                .Select(f => Path.GetFullPath(f).TrimEnd(Path.DirectorySeparatorChar))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
         public string GetName() => "Export Sheets Handler";

@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:av="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:helpers="clr-namespace:EliteSheets.Helpers"
     xmlns:local="clr-namespace:EliteSheets"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -466,6 +467,7 @@
                             </StackPanel>
 
                             <StackPanel
+                                x:Name="SingleFolderPanel"
                                 Margin="0,10,0,0"
                                 HorizontalAlignment="Left"
                                 Orientation="Horizontal">
@@ -491,6 +493,71 @@
                                     Text="C:\Path\To\Export"
                                     ToolTip="Selected export path" />
                             </StackPanel>
+
+                            <StackPanel x:Name="SeparateFoldersPanel" Visibility="Collapsed">
+                                <StackPanel
+                                    Margin="0,10,0,0"
+                                    HorizontalAlignment="Left"
+                                    Orientation="Horizontal">
+                                    <Button
+                                        x:Name="BrowsePdfButton"
+                                        Width="80"
+                                        Height="25"
+                                        Margin="0,0,5,0"
+                                        AutomationProperties.Name="Browse for PDF export folder"
+                                        Click="BrowsePdfButton_Click"
+                                        Content="PDF..."
+                                        FontSize="14"
+                                        Style="{StaticResource CustomActionButtonStyle}"
+                                        ToolTip="Select a folder for exported PDF files" />
+                                    <TextBox
+                                        x:Name="PdfExportPathTextBox"
+                                        Height="25"
+                                        MinWidth="300"
+                                        VerticalContentAlignment="Center"
+                                        AutomationProperties.Name="PDF export path"
+                                        IsReadOnly="True"
+                                        Style="{StaticResource CustomTextBoxStyle}"
+                                        ToolTip="Selected PDF export path" />
+                                </StackPanel>
+                                <StackPanel
+                                    Margin="0,5,0,0"
+                                    HorizontalAlignment="Left"
+                                    Orientation="Horizontal">
+                                    <Button
+                                        x:Name="BrowseDwgButton"
+                                        Width="80"
+                                        Height="25"
+                                        Margin="0,0,5,0"
+                                        AutomationProperties.Name="Browse for DWG export folder"
+                                        Click="BrowseDwgButton_Click"
+                                        Content="DWG..."
+                                        FontSize="14"
+                                        Style="{StaticResource CustomActionButtonStyle}"
+                                        ToolTip="Select a folder for exported DWG files" />
+                                    <TextBox
+                                        x:Name="DwgExportPathTextBox"
+                                        Height="25"
+                                        MinWidth="300"
+                                        VerticalContentAlignment="Center"
+                                        AutomationProperties.Name="DWG export path"
+                                        IsReadOnly="True"
+                                        Style="{StaticResource CustomTextBoxStyle}"
+                                        ToolTip="Selected DWG export path" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <CheckBox
+                                x:Name="SeparateFoldersCheckbox"
+                                Margin="0,8,0,0"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Use separate folders for PDF and DWG"
+                                Click="SeparateFoldersCheckbox_Click"
+                                helpers:CheckboxAssist.IconSize="16"
+                                Content="Separate PDF / DWG folders"
+                                FontSize="12"
+                                Style="{StaticResource CustomCheckboxStyle}"
+                                ToolTip="Export PDF and DWG files to different folders" />
                         </StackPanel>
 
                         <!--  Right column: print button  -->

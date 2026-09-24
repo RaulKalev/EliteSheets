@@ -19,7 +19,15 @@
   
   <ItemGroup>
     <EmbeddedResource Include="Assets\EliteSheets.tiff" />
-  </ItemGroup>	
+  </ItemGroup>
+
+  <!-- Theme XAML is embedded as plain text and parsed by ThemeResources (see there why not as compiled pages). -->
+  <ItemGroup>
+    <Page Remove="UI\Themes\*.xaml" />
+    <EmbeddedResource Include="UI\Themes\DarkTheme.xaml" LogicalName="EliteSheets.UI.Themes.DarkTheme.xaml" />
+    <EmbeddedResource Include="UI\Themes\LightTheme.xaml" LogicalName="EliteSheets.UI.Themes.LightTheme.xaml" />
+    <EmbeddedResource Include="UI\Themes\Styles.xaml" LogicalName="EliteSheets.UI.Themes.Styles.xaml" />
+  </ItemGroup>
   
   <ItemGroup>
     <PackageReference Include="Costura.Fody" Version="6.0.0">
@@ -64,18 +72,9 @@
 		<Resource Include="Assets\EliteSheets.tiff">
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
 		</Resource>
-		<Resource Include="UI\Themes\DarkTheme.xaml">
-			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
-		</Resource>
-		<Resource Include="UI\Themes\LightTheme.xaml">
-			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
-		</Resource>
 	</ItemGroup>
 
 	<ItemGroup>
-		<Compile Update="CustomTitleBar.xaml.cs">
-			<SubType>Code</SubType>
-		</Compile>
 		<Compile Update="Properties\Settings.Designer.cs">
 			<DesignTimeSharedInput>True</DesignTimeSharedInput>
 			<AutoGen>True</AutoGen>
@@ -90,10 +89,4 @@
 		</None>
 	</ItemGroup>
 
-	<ItemGroup>
-		<Page Update="CustomTitleBar.xaml">
-			<SubType>Designer</SubType>
-		</Page>
-	</ItemGroup>
-	
 </Project>

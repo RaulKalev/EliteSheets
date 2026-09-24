@@ -51,8 +51,8 @@ namespace EliteSheets
         private Document _doc;
         private View _currentView;
 
-        private readonly WindowResizer _windowResizer;
         private bool _isDarkMode = true;
+        private CheckBox _checkAllBox;
         private string _templateDxfPath = string.Empty;
 
         public ObservableCollection<string> ViewTypes { get; set; } = new ObservableCollection<string>();
@@ -79,6 +79,9 @@ namespace EliteSheets
 
         public MainWindow(UIDocument uiDoc, Document doc, View currentView)
         {
+            // Palette (slot 0, swapped by LoadTheme) and shared styles must exist before the XAML's StaticResources.
+            Resources.MergedDictionaries.Add(Themes.ThemeResources.Palette(dark: true));
+            Resources.MergedDictionaries.Add(Themes.ThemeResources.Styles());
             InitializeComponent();
 
             _uiDoc = uiDoc;
@@ -87,13 +90,11 @@ namespace EliteSheets
 
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-            // Window infrastructure
-            _windowResizer = new WindowResizer(this);
+            // Window infrastructure (resize, snap and drag come from WindowChrome)
             Closed += MainWindow_Closed;
-
-            // Window-level mouse hooks for resizing
-            MouseMove += Window_MouseMove;
-            MouseLeftButtonUp += Window_MouseLeftButtonUp;
+            StateChanged += (s, e) => UpdateMaximizedState();
+            PreviewKeyDown += MainWindow_PreviewKeyDown;
+            ProjectText.Text = doc.Title;
 
             // Theme + DataContext
             LoadThemeState();
@@ -130,9 +131,8 @@ namespace EliteSheets
 
             _sheetsView.Refresh();
 
-
-
             UpdateClearButtonState();
+            UpdateSelectionSummary();
 
             LoadDwgExportSetups();
 
@@ -150,39 +150,37 @@ namespace EliteSheets
 
         #region Theme
 
+        /// <summary>
+        /// Swaps only the palette dictionary; the shared styles stay merged and pick up the new colours through
+        /// DynamicResource.
+        /// </summary>
         private void LoadTheme()
         {
-            var assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
-            var themeUri = _isDarkMode
-                ? $"pack://application:,,,/{assemblyName};component/UI/Themes/DarkTheme.xaml"
-                : $"pack://application:,,,/{assemblyName};component/UI/Themes/LightTheme.xaml";
-
             try
             {
-                var resourceDict = new ResourceDictionary { Source = new Uri(themeUri, UriKind.Absolute) };
-                Resources.MergedDictionaries.Clear();
-                Resources.MergedDictionaries.Add(resourceDict);
+                var palette = Themes.ThemeResources.Palette(_isDarkMode);
+                var merged = Resources.MergedDictionaries;
+                var existing = merged.FirstOrDefault(Themes.ThemeResources.IsPalette);
+                if (existing != null) merged[merged.IndexOf(existing)] = palette;
+                else merged.Insert(0, palette);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load theme: {ex.Message}\nTheme URI: {themeUri}", "Theme Load Error",
+                MessageBox.Show($"Failed to load theme: {ex.Message}", "Theme Load Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
+
+            ThemeIcon.Kind = _isDarkMode
+                ? MaterialDesignThemes.Wpf.PackIconKind.WeatherNight
+                : MaterialDesignThemes.Wpf.PackIconKind.WhiteBalanceSunny;
+            ThemeButton.ToolTip = _isDarkMode ? "Dark appearance \u2013 switch to light" : "Light appearance \u2013 switch to dark";
         }
+
         private void ToggleTheme_Click(object sender, RoutedEventArgs e)
         {
-            _isDarkMode = ThemeToggleButton.IsChecked == true;
+            _isDarkMode = !_isDarkMode;
             LoadTheme();
-            SaveThemeState(); // <-- add this
-
-            var icon = ThemeToggleButton?.Template?.FindName("ThemeToggleIcon", ThemeToggleButton)
-                       as MaterialDesignThemes.Wpf.PackIcon;
-            if (icon != null)
-            {
-                icon.Kind = _isDarkMode
-                    ? MaterialDesignThemes.Wpf.PackIconKind.ToggleSwitchOffOutline
-                    : MaterialDesignThemes.Wpf.PackIconKind.ToggleSwitchOutline;
-            }
+            SaveThemeState();
         }
 
         private void LoadThemeState()
@@ -208,17 +206,6 @@ namespace EliteSheets
             {
                 MessageBox.Show($"Failed to load theme/config: {ex.Message}", "Load Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-
-            // reflect UI
-            ThemeToggleButton.IsChecked = _isDarkMode;
-            var icon = ThemeToggleButton?.Template?.FindName("ThemeToggleIcon", ThemeToggleButton)
-                       as MaterialDesignThemes.Wpf.PackIcon;
-            if (icon != null)
-            {
-                icon.Kind = _isDarkMode
-                    ? MaterialDesignThemes.Wpf.PackIconKind.ToggleSwitchOffOutline
-                    : MaterialDesignThemes.Wpf.PackIconKind.ToggleSwitchOutline;
             }
         }
 
@@ -376,6 +363,7 @@ namespace EliteSheets
         {
             _sheetsView?.Refresh();
             UpdateClearButtonState();
+            UpdateSelectionSummary();
         }
 
         private void ClearSearchButton_Click(object sender, RoutedEventArgs e)
@@ -385,6 +373,7 @@ namespace EliteSheets
 
             _sheetsView?.Refresh();
             UpdateClearButtonState();
+            UpdateSelectionSummary();
         }
 
         private void UpdateClearButtonState()
@@ -520,7 +509,7 @@ namespace EliteSheets
 
         private void LoadSheets()
         {
-            Sheets.Clear();
+            foreach (var old in Sheets) old.PropertyChanged -= SheetItem_PropertyChanged;
             Sheets.Clear();
 
             // 1. Get all sheets
@@ -586,6 +575,7 @@ namespace EliteSheets
                 }
                 item.Version = string.IsNullOrWhiteSpace(versionText) ? "-" : versionText;
 
+                item.PropertyChanged += SheetItem_PropertyChanged;
                 Sheets.Add(item);
             }
         }
@@ -632,7 +622,7 @@ namespace EliteSheets
                 Autodesk.Revit.UI.TaskDialog.Show("Reload Error", $"Failed to reload data: {ex.Message}");
             }
             _sheetsView?.Refresh();
-
+            UpdateSelectionSummary();
         }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)
@@ -814,42 +804,81 @@ namespace EliteSheets
                 if (item != null && !ReferenceEquals(item, clickedItem))
                     item.IsChecked = newState;
             }
+        }
 
-            SheetsDataGrid.Items.Refresh();
+        private void CheckAllBox_Loaded(object sender, RoutedEventArgs e)
+        {
+            _checkAllBox = sender as CheckBox;
+            UpdateSelectionSummary();
         }
 
         private void CheckAllBox_Click(object sender, RoutedEventArgs e)
         {
-            var headerCheckbox = sender as CheckBox;
-            if (headerCheckbox == null) return;
-
-            var newState = headerCheckbox.IsChecked == true;
+            // Decide from the data, not the box: a mixed or empty state selects everything visible, a full one clears.
+            var visible = VisibleSheets().ToList();
+            var newState = !(visible.Count > 0 && visible.All(s => s.IsChecked));
 
             if (newState)
             {
-                // If checking, only check visible items
-                if (_sheetsView != null)
-                {
-                    foreach (var item in _sheetsView)
-                    {
-                        var sheetItem = item as SheetItem;
-                        if (sheetItem != null)
-                        {
-                            sheetItem.IsChecked = true;
-                        }
-                    }
-                }
+                foreach (var item in visible) item.IsChecked = true;
             }
             else
             {
-                // If unchecking, uncheck all items globally
-                foreach (var item in Sheets)
-                {
-                    item.IsChecked = false;
-                }
+                // Clearing is global, so nothing hidden by the search stays selected by surprise.
+                foreach (var item in Sheets) item.IsChecked = false;
             }
 
-            SheetsDataGrid.Items.Refresh();
+            UpdateSelectionSummary();
+        }
+
+        private void FormatCheckbox_Click(object sender, RoutedEventArgs e) => UpdateSelectionSummary();
+
+        private void SheetItem_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(SheetItem.IsChecked)) UpdateSelectionSummary();
+        }
+
+        private IEnumerable<SheetItem> VisibleSheets() =>
+            _sheetsView == null ? Enumerable.Empty<SheetItem>() : _sheetsView.Cast<SheetItem>();
+
+        /// <summary>
+        /// Keeps the selection count, the Print button label/state, the select-all box (on / mixed / off) and the
+        /// empty state in step with the data. Feedback is inline: the button says what it will do.
+        /// </summary>
+        private void UpdateSelectionSummary()
+        {
+            if (SelectionText == null || PrintButton == null) return;
+
+            var selected = Sheets.Count(s => s.IsChecked);
+            var anyFormat = PdfExportCheckbox.IsChecked == true || DwgExportCheckbox.IsChecked == true;
+
+            if (Sheets.Count == 0) SelectionText.Text = "No sheets in this model";
+            else if (!anyFormat) SelectionText.Text = "Choose PDF or DWG to export";
+            else if (selected == 0) SelectionText.Text = $"{Sheets.Count} sheets \u00b7 none selected";
+            else SelectionText.Text = $"{selected} of {Sheets.Count} selected";
+
+            PrintButtonText.Text = selected == 0 ? "Print" : selected == 1 ? "Print 1 sheet" : $"Print {selected} sheets";
+            PrintButton.IsEnabled = selected > 0 && anyFormat;
+
+            var visible = VisibleSheets().ToList();
+            if (_checkAllBox != null)
+            {
+                var visibleChecked = visible.Count(s => s.IsChecked);
+                _checkAllBox.IsChecked = visibleChecked == 0 ? false : visibleChecked == visible.Count ? (bool?)true : null;
+            }
+
+            var query = SheetSearchTextBox?.Text?.Trim() ?? string.Empty;
+            var isEmpty = visible.Count == 0;
+            EmptyState.Visibility = isEmpty ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            if (isEmpty)
+            {
+                var searching = query.Length > 0;
+                EmptyTitle.Text = searching ? "No matching sheets" : "No sheets";
+                EmptyDetail.Text = searching
+                    ? $"Nothing matches \u201c{query}\u201d. Try a sheet number, part of a name or a version."
+                    : "This model has no sheets yet. Create sheets in Revit, then reload.";
+                EmptyClearButton.Visibility = searching ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            }
         }
 
         private void SheetsDataGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -880,31 +909,60 @@ namespace EliteSheets
 
         #endregion
 
-        #region Window chrome / resize handlers
+        #region Window chrome / keyboard
 
-        private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
+        private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+        private void Maximize_Click(object sender, RoutedEventArgs e) =>
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+        private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void UpdateMaximizedState()
         {
-            if (e.LeftButton == MouseButtonState.Pressed)
-                DragMove();
+            // A maximized WindowChrome window extends past the work area by the resize frame; pad the content back in.
+            var maximized = WindowState == WindowState.Maximized;
+            var frame = SystemParameters.WindowResizeBorderThickness;
+            RootGrid.Margin = maximized ? new Thickness(frame.Left + 4, frame.Top + 4, frame.Right + 4, frame.Bottom + 4) : new Thickness(0);
+            MaximizeIcon.Kind = maximized ? MaterialDesignThemes.Wpf.PackIconKind.WindowRestore : MaterialDesignThemes.Wpf.PackIconKind.WindowMaximize;
+            MaximizeButton.ToolTip = maximized ? "Restore down" : "Maximize";
+            System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, maximized ? "Restore down" : "Maximize");
         }
 
-        private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
-        private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
-        private void LeftEdge_MouseEnter(object sender, MouseEventArgs e) => Cursor = Cursors.SizeWE;
-        private void RightEdge_MouseEnter(object sender, MouseEventArgs e) => Cursor = Cursors.SizeWE;
-        private void BottomEdge_MouseEnter(object sender, MouseEventArgs e) => Cursor = Cursors.SizeNS;
-        private void Edge_MouseLeave(object sender, MouseEventArgs e) => Cursor = Cursors.Arrow;
-        private void BottomLeftCorner_MouseEnter(object sender, MouseEventArgs e) => Cursor = Cursors.SizeNESW;
-        private void BottomRightCorner_MouseEnter(object sender, MouseEventArgs e) => Cursor = Cursors.SizeNWSE;
+            if (ctrl && e.Key == Key.F)
+            {
+                SheetSearchTextBox.Focus();
+                SheetSearchTextBox.SelectAll();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape && SheetSearchTextBox.IsKeyboardFocusWithin && SheetSearchTextBox.Text.Length > 0)
+            {
+                ClearSearchButton_Click(sender, e);
+                e.Handled = true;
+            }
+            else if (ctrl && e.Key == Key.Enter && PrintButton.IsEnabled)
+            {
+                PrintButton_Click(sender, e);
+                e.Handled = true;
+            }
+        }
 
-        private void Window_MouseMove(object sender, MouseEventArgs e) => _windowResizer.ResizeWindow(e);
-        private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => _windowResizer.StopResizing();
-        private void LeftEdge_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _windowResizer.StartResizing(e, ResizeDirection.Left);
-        private void RightEdge_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _windowResizer.StartResizing(e, ResizeDirection.Right);
-        private void BottomEdge_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _windowResizer.StartResizing(e, ResizeDirection.Bottom);
-        private void BottomLeftCorner_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _windowResizer.StartResizing(e, ResizeDirection.BottomLeft);
-        private void BottomRightCorner_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _windowResizer.StartResizing(e, ResizeDirection.BottomRight);
+        /// <summary>Space toggles the checkbox of every selected row (the keyboard equivalent of clicking the box).</summary>
+        private void SheetsDataGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Space || e.OriginalSource is CheckBox) return;
+
+            var rows = SheetsDataGrid.SelectedItems.OfType<SheetItem>().ToList();
+            if (rows.Count == 0) return;
+
+            var newState = !rows.All(r => r.IsChecked);
+            foreach (var row in rows) row.IsChecked = newState;
+            e.Handled = true;
+        }
 
         #endregion
 
@@ -928,6 +986,7 @@ namespace EliteSheets
                 SaveThemeState();
 
                 if (SheetsDataGrid != null) SheetsDataGrid.ItemsSource = null;
+                foreach (var item in Sheets) item.PropertyChanged -= SheetItem_PropertyChanged;
 
                 if (ViewTypes != null) ViewTypes.Clear();
                 if (ViewTemplates != null) ViewTemplates.Clear();
@@ -945,23 +1004,11 @@ namespace EliteSheets
                 _uiDoc = null;
                 _doc = null;
                 _currentView = null;
-
-                var disposableResizer = _windowResizer as IDisposable;
-                if (disposableResizer != null) { try { disposableResizer.Dispose(); } catch { } }
             }
             catch
             {
                 // swallow – app is closing
             }
-        }
-
-        #endregion
-
-        #region Misc
-
-        private void TitleBar_Loaded(object sender, RoutedEventArgs e)
-        {
-            // keep hook if you add logic later
         }
 
         #endregion

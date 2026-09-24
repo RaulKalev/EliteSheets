@@ -1,645 +1,518 @@
-﻿<Window
+<Window
     x:Class="EliteSheets.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:av="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:helpers="clr-namespace:EliteSheets.Helpers"
     xmlns:local="clr-namespace:EliteSheets"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    x:Name="Root"
     Title="Jooniste printimine"
-    Width="1000"
-    Height="700"
-    MinWidth="1000"
-    MinHeight="700"
-    AllowsTransparency="True"
-    Background="Transparent"
-    WindowStyle="None"
-    mc:Ignorable="av">
+    Width="1040"
+    Height="720"
+    MinWidth="880"
+    MinHeight="560"
+    Background="{DynamicResource Window.Background}"
+    TextOptions.TextFormattingMode="Display"
+    UseLayoutRounding="True">
+    <!--
+        Standard Windows frame behaviour (Aero Snap, Win+arrows, native resize borders, DWM shadow and Windows 11
+        rounded corners) with the caption area drawn by EliteSheets – the same shell as Sentinel.
+        Layout: title · toolbar (search) · sheet list · floating action bar (formats, destination, Print).
+    -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome
+            CaptionHeight="52"
+            CornerRadius="0"
+            GlassFrameThickness="0,0,0,1"
+            NonClientFrameEdges="None"
+            ResizeBorderThickness="6"
+            UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <!--
+        No <ResourceDictionary> element here on purpose: the palette and shared styles are merged into the window's
+        existing Resources by the constructor before InitializeComponent (see ThemeResources), and these entries are
+        added next to them. Declaring a new dictionary would replace the merged ones.
+    -->
     <Window.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
+        <Style x:Key="CellText" TargetType="{x:Type TextBlock}">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style
+            x:Key="CellText.Number"
+            BasedOn="{StaticResource CellText}"
+            TargetType="{x:Type TextBlock}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style
+            x:Key="CellText.Secondary"
+            BasedOn="{StaticResource CellText}"
+            TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}" />
+        </Style>
 
-                <!--  Material Design default theme  -->
-                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ComboBox.xaml" />
-                <!--  Material Design dark theme  -->
-                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Dark.xaml" />
-                <ResourceDictionary Source="/EliteSheets;component/UI/Themes/ElementStyles.xaml" />
-
-
-            </ResourceDictionary.MergedDictionaries>
-            <!--  Custom Checkbox Style with Icons  -->
-            <Style x:Key="DatagridCheckboxStyle" TargetType="{x:Type CheckBox}">
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="{x:Type CheckBox}">
-                            <Border
-                                Padding="0"
-                                Background="Transparent"
-                                Cursor="Hand">
-                                <Grid Background="Transparent">
-                                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                                        <!--  Checkbox Icon  -->
-                                        <materialDesign:PackIcon
-                                            x:Name="CheckboxIcon"
-                                            Width="20"
-                                            Height="20"
-                                            VerticalAlignment="Center"
-                                            Foreground="{DynamicResource IconForegroundBrush}"
-                                            Kind="CheckboxBlankOutline" />
-
-                                        <!--  Checkbox Text  -->
-                                        <TextBlock
-                                            Margin="5,0,0,0"
-                                            VerticalAlignment="Center"
-                                            Foreground="{DynamicResource ForegroundBrush}"
-                                            Text="{TemplateBinding Content}" />
-                                    </StackPanel>
-
-                                    <!--  Clickable Transparent Overlay  -->
-                                    <Border
-                                        x:Name="ClickableArea"
-                                        HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Stretch"
-                                        Background="Transparent"
-                                        Cursor="Hand" />
-                                </Grid>
-                            </Border>
-
-                            <ControlTemplate.Triggers>
-                                <!--  Checked State  -->
-                                <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="CheckboxIcon" Property="Kind" Value="CheckboxMarkedOutline" />
-                                    <Setter TargetName="CheckboxIcon" Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-            <Style
-                x:Key="MultiRowHeaderStyle_NoRightBorder"
-                BasedOn="{StaticResource MultiRowHeaderStyle}"
-                TargetType="DataGridColumnHeader">
-                <Setter Property="BorderThickness" Value="0,0,0,1" />
-                <!--  removes right border  -->
-            </Style>
-            <!--  Flat icon button: no default hover/press chrome  -->
-            <Style x:Key="FlatIconButton" TargetType="{x:Type Button}">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderBrush" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-                <Setter Property="Cursor" Value="Hand" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="{x:Type Button}">
-                            <Border
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-
-                            <!--  OPTIONAL: subtle feedback without “weird” color  -->
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Opacity" Value="0.85" />
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Opacity" Value="0.70" />
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.35" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-
-        </ResourceDictionary>
+        <!--  Destination path: read-only value in an inset well; placeholder (Tag) when no folder is chosen  -->
+        <Style
+            x:Key="PathValue"
+            BasedOn="{StaticResource Input.ReadOnlyValue}"
+            TargetType="{x:Type TextBox}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Body}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Tag" Value="No folder chosen" />
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+            <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                    <Setter Property="ToolTip" Value="{x:Null}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="PathWell" TargetType="{x:Type Border}">
+            <Setter Property="Height" Value="{StaticResource Size.Control}" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Background" Value="{DynamicResource Surface.Inset}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Surface.Stroke}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource Radius.Control}" />
+        </Style>
+        <Style x:Key="PathGlyph" TargetType="{x:Type materialDesign:PackIcon}">
+            <Setter Property="Width" Value="15" />
+            <Setter Property="Height" Value="15" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Tertiary}" />
+        </Style>
+        <!--  Small caption above each group in the action bar  -->
+        <Style
+            x:Key="BarLabel"
+            BasedOn="{StaticResource Type.Caption}"
+            TargetType="{x:Type TextBlock}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
     </Window.Resources>
 
-    <Grid Background="Transparent" ClipToBounds="True">
-        <!--  Outer Border with Opacity and Blur  -->
+    <Grid
+        x:Name="RootGrid"
+        Background="{DynamicResource Window.Background}"
+        TextElement.FontFamily="{StaticResource Font.Text}"
+        TextElement.FontSize="{StaticResource FontSize.Body}"
+        TextElement.Foreground="{DynamicResource Text.Primary}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="52" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Border
-            Grid.RowSpan="2"
-            BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="2"
-            ClipToBounds="True"
-            CornerRadius="10"
-            Opacity="0.7"
-            SnapsToDevicePixels="True">
-            <Border.Effect>
-                <BlurEffect KernelType="Gaussian" Radius="2" />
-            </Border.Effect>
-        </Border>
 
-        <!--  Content Container (no spans)  -->
-        <Border
-            Margin="2"
-            Background="{DynamicResource PrimaryBackgroundBrush}"
-            CornerRadius="10">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="30" />
-                    <!--  Row 0: Title bar  -->
-                    <RowDefinition Height="*" />
-                    <!--  Row 1: DataGrid  -->
-                    <RowDefinition Height="Auto" />
-                    <!--  Row 2: Bottom controls  -->
-                </Grid.RowDefinitions>
+        <!--  ============ Title area (draggable caption) ============  -->
+        <DockPanel Background="Transparent">
+            <StackPanel
+                VerticalAlignment="Top"
+                DockPanel.Dock="Right"
+                Orientation="Horizontal">
+                <Button
+                    x:Name="ThemeButton"
+                    Width="32"
+                    Height="32"
+                    Margin="0,10,8,0"
+                    VerticalAlignment="Top"
+                    AutomationProperties.Name="Switch between dark and light appearance"
+                    Click="ToggleTheme_Click"
+                    Style="{StaticResource Button.Icon}"
+                    ToolTip="Switch between dark and light appearance"
+                    WindowChrome.IsHitTestVisibleInChrome="True">
+                    <materialDesign:PackIcon
+                        x:Name="ThemeIcon"
+                        Width="17"
+                        Height="17"
+                        Kind="WeatherNight" />
+                </Button>
+                <Button
+                    AutomationProperties.Name="Minimize"
+                    Click="Minimize_Click"
+                    Style="{StaticResource CaptionButton}"
+                    ToolTip="Minimize">
+                    <materialDesign:PackIcon
+                        Width="14"
+                        Height="14"
+                        Kind="WindowMinimize" />
+                </Button>
+                <Button
+                    x:Name="MaximizeButton"
+                    AutomationProperties.Name="Maximize"
+                    Click="Maximize_Click"
+                    Style="{StaticResource CaptionButton}"
+                    ToolTip="Maximize">
+                    <materialDesign:PackIcon
+                        x:Name="MaximizeIcon"
+                        Width="14"
+                        Height="14"
+                        Kind="WindowMaximize" />
+                </Button>
+                <Button
+                    AutomationProperties.Name="Close"
+                    Click="Close_Click"
+                    Style="{StaticResource CaptionCloseButton}"
+                    ToolTip="Close">
+                    <materialDesign:PackIcon
+                        Width="14"
+                        Height="14"
+                        Kind="WindowClose" />
+                </Button>
+            </StackPanel>
 
-                <!--  Title bar (Row 0)  -->
-                <local:TitleBar
-                    Grid.Row="0"
-                    Foreground="{DynamicResource ForegroundBrush}"
-                    Loaded="TitleBar_Loaded" />
-
-                <!--  Search bar (Row 0)  -->
-                <Border
-                    Grid.Row="0"
-                    Height="24"
-                    Margin="0,0,200,0"
-                    HorizontalAlignment="Right"
+            <!--  App name + where the sheets come from  -->
+            <StackPanel
+                Margin="18,0,12,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal">
+                <TextBlock
                     VerticalAlignment="Center"
-                    Background="{DynamicResource SecondaryBackgroundBrush}"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Opacity="0.95">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="28" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="28" />
-                        </Grid.ColumnDefinitions>
+                    Style="{StaticResource Type.Section}"
+                    Text="Jooniste printimine" />
+                <TextBlock
+                    x:Name="ProjectText"
+                    MaxWidth="360"
+                    Margin="10,2,0,0"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource Type.Secondary}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+            </StackPanel>
+        </DockPanel>
 
-                        <!--  Magnify icon  -->
-                        <materialDesign:PackIcon
-                            Grid.Column="0"
-                            Width="16"
-                            Height="16"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource IconBrush}"
-                            Kind="Magnify" />
-
-                        <!--  Search textbox placeholder  -->
-                        <TextBlock
-                            Grid.Column="1"
-                            Margin="2,0,0,0"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource ForegroundBrush}"
-                            IsHitTestVisible="False"
-                            Opacity="0.5"
-                            Text="Search...">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Text, ElementName=SheetSearchTextBox}" Value="">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-
-                        <!--  Search textbox  -->
-                        <TextBox
-                            x:Name="SheetSearchTextBox"
-                            AutomationProperties.Name="Search sheets"
-                            Grid.Column="1"
-                            Width="150"
-                            Margin="0"
-                            VerticalContentAlignment="Center"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            CaretBrush="{DynamicResource ForegroundBrush}"
-                            FontSize="12"
-                            Foreground="{DynamicResource ForegroundBrush}"
-                            TextChanged="SheetSearchTextBox_TextChanged"
-                            ToolTip="Search (Number / Name / Version / Size)" />
-
-                        <!--  Clear button  -->
-                        <Button
-                            x:Name="ClearSearchButton"
-                            AutomationProperties.Name="Clear search"
-                            Grid.Column="2"
-                            Width="24"
-                            Height="24"
-                            Background="Transparent"
-                            BorderBrush="Transparent"
-                            Click="ClearSearchButton_Click"
-                            Style="{StaticResource FlatIconButton}"
-                            ToolTip="Clear">
-                            <materialDesign:PackIcon
-                                Width="16"
-                                Height="16"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Foreground="{DynamicResource IconBrush}"
-                                Kind="CloseCircleOutline" />
-                        </Button>
-                    </Grid>
-                </Border>
-
-                <Grid
-                    Grid.Row="0"
-                    Margin="0,0,100,0"
-                    HorizontalAlignment="Right">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <!--  NEW: Reload button (to the left of theme toggle)  -->
+        <!--  ============ Toolbar: search · reload · selection summary ============  -->
+        <DockPanel Grid.Row="1" Margin="16,0,16,12">
+            <TextBlock
+                x:Name="SelectionText"
+                VerticalAlignment="Center"
+                DockPanel.Dock="Right"
+                AutomationProperties.LiveSetting="Polite"
+                Style="{StaticResource Type.Secondary}"
+                TextWrapping="NoWrap" />
+            <StackPanel Orientation="Horizontal">
+                <Grid Width="300">
+                    <TextBox
+                        x:Name="SheetSearchTextBox"
+                        AutomationProperties.Name="Search sheets"
+                        Style="{StaticResource Input.Search}"
+                        Tag="Search number, name or version"
+                        TextChanged="SheetSearchTextBox_TextChanged"
+                        ToolTip="Search sheets by number, name, version or view (Ctrl+F)" />
                     <Button
-                        x:Name="ReloadButton"
-                        AutomationProperties.Name="Reload sheets"
-                        Grid.Column="0"
-                        Margin="0,0,30,0"
-                        Click="ReloadButton_Click"
-                        Style="{StaticResource ReloadButtonStyle}"
-                        ToolTip="Reload">
-                        <materialDesign:PackIcon Kind="Refresh" Style="{StaticResource ReloadIconStyle}" />
+                        x:Name="ClearSearchButton"
+                        Width="24"
+                        Height="24"
+                        Margin="0,0,4,0"
+                        HorizontalAlignment="Right"
+                        AutomationProperties.Name="Clear search"
+                        Click="ClearSearchButton_Click"
+                        Style="{StaticResource Button.Icon}"
+                        ToolTip="Clear search (Esc)"
+                        Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVis}}">
+                        <materialDesign:PackIcon
+                            Width="14"
+                            Height="14"
+                            Kind="CloseCircle" />
                     </Button>
-
-                    <!--  Existing theme toggle  -->
-                    <ToggleButton
-                        x:Name="ThemeToggleButton"
-                        AutomationProperties.Name="Toggle Theme"
-                        Grid.Column="1"
-                        Width="28"
-                        Height="15.5"
-                        Background="Transparent"
-                        BorderBrush="Transparent"
-                        Click="ToggleTheme_Click"
-                        IsChecked="True"
-                        ToolTip="Toggle Theme">
-                        <ToggleButton.Template>
-                            <ControlTemplate TargetType="{x:Type ToggleButton}">
-                                <Grid Background="Transparent">
-                                    <materialDesign:PackIcon
-                                        x:Name="ThemeToggleIcon"
-                                        Width="30"
-                                        Height="30"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Foreground="{DynamicResource IconBrush}"
-                                        Kind="ToggleSwitchOffOutline" />
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsChecked" Value="True">
-                                        <Setter TargetName="ThemeToggleIcon" Property="Kind" Value="ToggleSwitchOffOutline" />
-                                    </Trigger>
-                                    <Trigger Property="IsChecked" Value="False">
-                                        <Setter TargetName="ThemeToggleIcon" Property="Kind" Value="ToggleSwitchOutline" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </ToggleButton.Template>
-                    </ToggleButton>
                 </Grid>
+                <Button
+                    x:Name="ReloadButton"
+                    Width="32"
+                    Height="32"
+                    Margin="8,0,0,0"
+                    AutomationProperties.Name="Reload sheets"
+                    Click="ReloadButton_Click"
+                    Style="{StaticResource Button.Icon}"
+                    ToolTip="Reload sheets and DWG setups from the model">
+                    <materialDesign:PackIcon
+                        Width="17"
+                        Height="17"
+                        Kind="Refresh" />
+                </Button>
+            </StackPanel>
+        </DockPanel>
 
+        <!--  ============ Sheet list ============  -->
+        <Border
+            Grid.Row="2"
+            Margin="16,0,16,0"
+            Padding="0,4,0,4"
+            Style="{StaticResource Surface}">
+            <Grid>
+                <DataGrid
+                    x:Name="SheetsDataGrid"
+                    AutomationProperties.Name="Sheets"
+                    ItemsSource="{Binding Sheets}"
+                    PreviewKeyDown="SheetsDataGrid_PreviewKeyDown"
+                    PreviewMouseLeftButtonDown="SheetsDataGrid_PreviewMouseLeftButtonDown"
+                    SelectionMode="Extended"
+                    Style="{StaticResource SheetGrid}">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Width="44" CanUserResize="False">
+                            <DataGridTemplateColumn.HeaderTemplate>
+                                <DataTemplate>
+                                    <CheckBox
+                                        x:Name="CheckAllBox"
+                                        HorizontalAlignment="Center"
+                                        AutomationProperties.Name="Select all visible sheets"
+                                        Click="CheckAllBox_Click"
+                                        Loaded="CheckAllBox_Loaded"
+                                        Style="{StaticResource Input.Check}"
+                                        ToolTip="Select or clear all visible sheets" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.HeaderTemplate>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox
+                                        HorizontalAlignment="Center"
+                                        Click="Checkbox_Click"
+                                        IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Style="{StaticResource Input.Check}">
+                                        <AutomationProperties.Name>
+                                            <MultiBinding StringFormat="Select sheet {0} - {1}">
+                                                <Binding Path="Number" />
+                                                <Binding Path="Name" />
+                                            </MultiBinding>
+                                        </AutomationProperties.Name>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn
+                            Width="180"
+                            MinWidth="100"
+                            Binding="{Binding Number}"
+                            ElementStyle="{StaticResource CellText.Number}"
+                            Header="Joonise number" />
+                        <DataGridTextColumn
+                            Width="*"
+                            MinWidth="160"
+                            Binding="{Binding Name}"
+                            ElementStyle="{StaticResource CellText}"
+                            Header="Joonise nimi" />
+                        <DataGridTextColumn
+                            Width="96"
+                            MinWidth="72"
+                            Binding="{Binding Version}"
+                            ElementStyle="{StaticResource CellText.Secondary}"
+                            Header="Versioon" />
+                    </DataGrid.Columns>
+                </DataGrid>
 
-                <!--  DataGrid card (Row 1)  -->
-                <materialDesign:Card
-                    Grid.Row="1"
-                    Margin="10,0,10,10"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
-                    BorderThickness="1"
-                    UniformCornerRadius="10">
-                    <DataGrid
-                        x:Name="SheetsDataGrid"
-                        AlternatingRowBackground="{DynamicResource SecondaryBackgroundBrush}"
-                        AutoGenerateColumns="False"
-                        Background="{DynamicResource SecondaryBackgroundBrush}"
-                        BorderThickness="0"
-                        CanUserAddRows="False"
-                        CanUserResizeRows="False"
-                        Foreground="{DynamicResource ForegroundBrush}"
-                        GridLinesVisibility="None"
-                        HeadersVisibility="Column"
-                        ItemsSource="{Binding Sheets}"
-                        PreviewMouseLeftButtonDown="SheetsDataGrid_PreviewMouseLeftButtonDown"
-                        RowBackground="{DynamicResource PrimaryBackgroundBrush}"
-                        RowHeaderWidth="0"
-                        RowHeight="20"
-                        SelectionMode="Extended"
-                        SelectionUnit="FullRow">
-
-                        <DataGrid.Columns>
-                            <!--  Checkbox column  -->
-                            <DataGridTemplateColumn Width="35" HeaderStyle="{StaticResource MultiRowHeaderStyle}">
-                                <DataGridTemplateColumn.HeaderTemplate>
-                                    <DataTemplate>
-                                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <CheckBox
-                                                x:Name="CheckAllBox"
-                                                AutomationProperties.Name="Select all sheets"
-                                                Click="CheckAllBox_Click"
-                                                Style="{StaticResource DatagridCheckboxStyle}"
-                                                ToolTip="Check/Uncheck All" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.HeaderTemplate>
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <CheckBox
-                                                Click="Checkbox_Click"
-                                                IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                Style="{StaticResource DatagridCheckboxStyle}">
-                                                <AutomationProperties.Name>
-                                                    <MultiBinding StringFormat="Select sheet {0} - {1}">
-                                                        <Binding Path="Number" />
-                                                        <Binding Path="Name" />
-                                                    </MultiBinding>
-                                                </AutomationProperties.Name>
-                                            </CheckBox>
-                                        </Grid>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <!--  Sheet Number  -->
-                            <DataGridTextColumn
-                                Width="*"
-                                Binding="{Binding Number}"
-                                Header="Joonise Number"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
-                                IsReadOnly="True" />
-
-                            <!--  Sheet Name  -->
-                            <DataGridTextColumn
-                                Width="*"
-                                Binding="{Binding Name}"
-                                Header="Joonise nimi"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
-                                IsReadOnly="True" />
-
-                            <!--  Versioon (NEW)  -->
-                            <DataGridTextColumn
-                                Width="75"
-                                Binding="{Binding Version}"
-                                ElementStyle="{StaticResource CenterAlignedCellStyle}"
-                                Header="Versioon"
-                                HeaderStyle="{StaticResource MultiRowHeaderStyle}"
-                                IsReadOnly="True" />
-
-
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </materialDesign:Card>
-
-                <!--  Bottom controls (Row 2)  -->
-                <materialDesign:Card
-                    Grid.Row="2"
-                    Margin="10,0,10,10"
-                    Padding="10"
-                    Background="{DynamicResource SecondaryBackgroundBrush}"
-                    BorderBrush="Transparent"
-                    BorderThickness="0"
-                    UniformCornerRadius="10">
-                    <Grid Margin="0,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <!--  Left column: settings and browse  -->
-                        <StackPanel
-                            Grid.Column="0"
-                            VerticalAlignment="Center"
-                            Orientation="Vertical">
-                            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                <CheckBox
-                                    x:Name="DwgExportCheckbox"
-                                    Margin="0,0,20,0"
-                                    AutomationProperties.Name="Export to DWG"
-                                    Content="DWG"
-                                    FontSize="24"
-                                    FontWeight="Bold"
-                                    IsChecked="True"
-                                    Style="{StaticResource CustomCheckboxStyle}"
-                                    ToolTip="Export to DWG format" />
-                                <CheckBox
-                                    x:Name="PdfExportCheckbox"
-                                    Margin="0,0,20,0"
-                                    AutomationProperties.Name="Export to PDF"
-                                    Content="PDF"
-                                    FontSize="24"
-                                    FontWeight="Bold"
-                                    IsChecked="True"
-                                    Style="{StaticResource CustomCheckboxStyle}"
-                                    ToolTip="Export to PDF format" />
-                            </StackPanel>
-
-                            <StackPanel
-                                Margin="0,5,0,0"
-                                HorizontalAlignment="Left"
-                                Orientation="Horizontal">
-                                <TextBlock
-                                    x:Name="DwgExportSettingsLabel"
-                                    Margin="0,0,10,0"
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    Foreground="{DynamicResource ForegroundBrush}"
-                                    Text="DWG Export settings:" />
-                                <ComboBox
-                                    x:Name="DwgExportComboBox"
-                                    Width="100"
-                                    Height="20"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.LabeledBy="{Binding ElementName=DwgExportSettingsLabel}"
-                                    DisplayMemberPath="Name"
-                                    Style="{StaticResource DarkThemeComboBox}"
-                                    ToolTip="Select DWG Export Setup" />
-                            </StackPanel>
-
-                            <StackPanel
-                                x:Name="SingleFolderPanel"
-                                Margin="0,10,0,0"
-                                HorizontalAlignment="Left"
-                                Orientation="Horizontal">
-                                <Button
-                                    x:Name="BrowseButton"
-                                    Width="80"
-                                    Height="25"
-                                    Margin="0,0,5,0"
-                                    AutomationProperties.Name="Browse for export folder"
-                                    Click="BrowseButton_Click"
-                                    Content="Browse"
-                                    FontSize="14"
-                                    Style="{StaticResource CustomActionButtonStyle}"
-                                    ToolTip="Select a folder for exported files" />
-                                <TextBox
-                                    x:Name="ExportPathTextBox"
-                                    Height="25"
-                                    MinWidth="300"
-                                    VerticalContentAlignment="Center"
-                                    AutomationProperties.Name="Export path"
-                                    IsReadOnly="True"
-                                    Style="{StaticResource CustomTextBoxStyle}"
-                                    Text="C:\Path\To\Export"
-                                    ToolTip="Selected export path" />
-                            </StackPanel>
-
-                            <StackPanel x:Name="SeparateFoldersPanel" Visibility="Collapsed">
-                                <StackPanel
-                                    Margin="0,10,0,0"
-                                    HorizontalAlignment="Left"
-                                    Orientation="Horizontal">
-                                    <Button
-                                        x:Name="BrowsePdfButton"
-                                        Width="80"
-                                        Height="25"
-                                        Margin="0,0,5,0"
-                                        AutomationProperties.Name="Browse for PDF export folder"
-                                        Click="BrowsePdfButton_Click"
-                                        Content="PDF..."
-                                        FontSize="14"
-                                        Style="{StaticResource CustomActionButtonStyle}"
-                                        ToolTip="Select a folder for exported PDF files" />
-                                    <TextBox
-                                        x:Name="PdfExportPathTextBox"
-                                        Height="25"
-                                        MinWidth="300"
-                                        VerticalContentAlignment="Center"
-                                        AutomationProperties.Name="PDF export path"
-                                        IsReadOnly="True"
-                                        Style="{StaticResource CustomTextBoxStyle}"
-                                        ToolTip="Selected PDF export path" />
-                                </StackPanel>
-                                <StackPanel
-                                    Margin="0,5,0,0"
-                                    HorizontalAlignment="Left"
-                                    Orientation="Horizontal">
-                                    <Button
-                                        x:Name="BrowseDwgButton"
-                                        Width="80"
-                                        Height="25"
-                                        Margin="0,0,5,0"
-                                        AutomationProperties.Name="Browse for DWG export folder"
-                                        Click="BrowseDwgButton_Click"
-                                        Content="DWG..."
-                                        FontSize="14"
-                                        Style="{StaticResource CustomActionButtonStyle}"
-                                        ToolTip="Select a folder for exported DWG files" />
-                                    <TextBox
-                                        x:Name="DwgExportPathTextBox"
-                                        Height="25"
-                                        MinWidth="300"
-                                        VerticalContentAlignment="Center"
-                                        AutomationProperties.Name="DWG export path"
-                                        IsReadOnly="True"
-                                        Style="{StaticResource CustomTextBoxStyle}"
-                                        ToolTip="Selected DWG export path" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <CheckBox
-                                x:Name="SeparateFoldersCheckbox"
-                                Margin="0,8,0,0"
-                                HorizontalAlignment="Left"
-                                AutomationProperties.Name="Use separate folders for PDF and DWG"
-                                Click="SeparateFoldersCheckbox_Click"
-                                helpers:CheckboxAssist.IconSize="16"
-                                Content="Separate PDF / DWG folders"
-                                FontSize="12"
-                                Style="{StaticResource CustomCheckboxStyle}"
-                                ToolTip="Export PDF and DWG files to different folders" />
-                        </StackPanel>
-
-                        <!--  Right column: print button  -->
-                        <StackPanel
-                            Grid.Column="1"
-                            Margin="10,0,10,0"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                            <Button
-                                x:Name="PrintButton"
-                                Width="200"
-                                Height="100"
-                                VerticalAlignment="Center"
-                                AutomationProperties.Name="Print and export selected sheets"
-                                Click="PrintButton_Click"
-                                Content="Print"
-                                FontSize="24"
-                                FontWeight="Bold"
-                                Style="{StaticResource CustomActionButtonStyle}"
-                                ToolTip="Print and export selected sheets" />
-                        </StackPanel>
-                    </Grid>
-                </materialDesign:Card>
+                <!--  Empty state: says what happened and how to get out of it  -->
+                <StackPanel
+                    x:Name="EmptyState"
+                    Margin="24,40,24,24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    local:Motion.Reveal="True"
+                    Visibility="Collapsed">
+                    <materialDesign:PackIcon
+                        Width="32"
+                        Height="32"
+                        Margin="0,0,0,10"
+                        HorizontalAlignment="Center"
+                        Foreground="{DynamicResource Text.Tertiary}"
+                        Kind="FileSearchOutline" />
+                    <TextBlock
+                        x:Name="EmptyTitle"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource Type.Heading}"
+                        Text="No matching sheets" />
+                    <TextBlock
+                        x:Name="EmptyDetail"
+                        MaxWidth="320"
+                        Margin="0,4,0,12"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource Type.Secondary}"
+                        TextAlignment="Center" />
+                    <Button
+                        x:Name="EmptyClearButton"
+                        HorizontalAlignment="Center"
+                        Click="ClearSearchButton_Click"
+                        Content="Clear search"
+                        Style="{StaticResource Button.Plain}" />
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!--  Left Edge  -->
+        <!--  ============ Action bar (single floating layer) ============  -->
         <Border
-            x:Name="LeftEdge"
-            Width="5"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Stretch"
-            Background="Transparent"
-            Cursor="SizeWE"
-            MouseEnter="LeftEdge_MouseEnter"
-            MouseLeave="Edge_MouseLeave"
-            MouseLeftButtonDown="LeftEdge_MouseLeftButtonDown" />
-        <!--  Right Edge  -->
-        <Border
-            x:Name="RightEdge"
-            Width="9"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Stretch"
-            Background="Transparent"
-            Cursor="SizeWE"
-            MouseEnter="RightEdge_MouseEnter"
-            MouseLeave="Edge_MouseLeave"
-            MouseLeftButtonDown="RightEdge_MouseLeftButtonDown" />
-        <!--  Bottom Edge  -->
-        <Border
-            x:Name="BottomEdge"
-            Height="5"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Bottom"
-            Background="Transparent"
-            Cursor="SizeNS"
-            MouseEnter="BottomEdge_MouseEnter"
-            MouseLeave="Edge_MouseLeave"
-            MouseLeftButtonDown="BottomEdge_MouseLeftButtonDown" />
-        <!--  Bottom-Left Corner  -->
-        <Border
-            x:Name="BottomLeftCorner"
-            Width="10"
-            Height="10"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Bottom"
-            Background="Transparent"
-            Cursor="SizeNESW"
-            MouseEnter="BottomLeftCorner_MouseEnter"
-            MouseLeave="Edge_MouseLeave"
-            MouseLeftButtonDown="BottomLeftCorner_MouseLeftButtonDown" />
-        <!--  Bottom-Right Corner  -->
-        <Border
-            x:Name="BottomRightCorner"
-            Width="10"
-            Height="10"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Bottom"
-            Background="Transparent"
-            Cursor="SizeNWSE"
-            MouseEnter="BottomRightCorner_MouseEnter"
-            MouseLeave="Edge_MouseLeave"
-            MouseLeftButtonDown="BottomRightCorner_MouseLeftButtonDown" />
+            Grid.Row="3"
+            Margin="16,12,16,16"
+            Padding="16,12,16,14"
+            Style="{StaticResource Floating}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!--  Formats  -->
+                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                    <TextBlock Style="{StaticResource BarLabel}" Text="Format" />
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox
+                            x:Name="PdfExportCheckbox"
+                            Margin="0,0,8,0"
+                            AutomationProperties.Name="Export to PDF"
+                            Click="FormatCheckbox_Click"
+                            Content="PDF"
+                            IsChecked="True"
+                            Style="{StaticResource Toggle.Chip}"
+                            ToolTip="Export selected sheets as PDF" />
+                        <CheckBox
+                            x:Name="DwgExportCheckbox"
+                            AutomationProperties.Name="Export to DWG"
+                            Click="FormatCheckbox_Click"
+                            Content="DWG"
+                            IsChecked="True"
+                            Style="{StaticResource Toggle.Chip}"
+                            ToolTip="Export selected sheets as DWG" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!--  DWG setup (only meaningful when DWG is on – placed next to the control it depends on)  -->
+                <StackPanel
+                    Grid.Column="1"
+                    Margin="0,0,20,0"
+                    IsEnabled="{Binding IsChecked, ElementName=DwgExportCheckbox}">
+                    <TextBlock
+                        x:Name="DwgExportSettingsLabel"
+                        Style="{StaticResource BarLabel}"
+                        Text="DWG setup" />
+                    <ComboBox
+                        x:Name="DwgExportComboBox"
+                        Width="190"
+                        AutomationProperties.LabeledBy="{Binding ElementName=DwgExportSettingsLabel}"
+                        DisplayMemberPath="Name"
+                        Style="{StaticResource Input.Combo}"
+                        ToolTip="DWG export setup defined in the Revit project" />
+                </StackPanel>
+
+                <!--  Destination  -->
+                <StackPanel Grid.Column="2" Margin="0,0,20,0">
+                    <DockPanel>
+                        <CheckBox
+                            x:Name="SeparateFoldersCheckbox"
+                            Margin="12,0,0,6"
+                            VerticalAlignment="Top"
+                            AutomationProperties.Name="Use separate folders for PDF and DWG"
+                            Click="SeparateFoldersCheckbox_Click"
+                            Content="Separate folders"
+                            DockPanel.Dock="Right"
+                            FontSize="{StaticResource FontSize.Secondary}"
+                            Foreground="{DynamicResource Text.Secondary}"
+                            Style="{StaticResource Input.Check}"
+                            ToolTip="Export PDF and DWG files to different folders" />
+                        <TextBlock Style="{StaticResource BarLabel}" Text="Destination" />
+                    </DockPanel>
+
+                    <!--  One folder  -->
+                    <DockPanel x:Name="SingleFolderPanel" local:Motion.Reveal="True">
+                        <Button
+                            x:Name="BrowseButton"
+                            Margin="8,0,0,0"
+                            AutomationProperties.Name="Choose export folder"
+                            Click="BrowseButton_Click"
+                            Content="Choose…"
+                            DockPanel.Dock="Right"
+                            Style="{StaticResource Button.Secondary}"
+                            ToolTip="Choose the folder for exported files" />
+                        <Border Style="{StaticResource PathWell}">
+                            <DockPanel>
+                                <materialDesign:PackIcon Kind="FolderOutline" Style="{StaticResource PathGlyph}" />
+                                <TextBox
+                                    x:Name="ExportPathTextBox"
+                                    AutomationProperties.Name="Export folder"
+                                    Style="{StaticResource PathValue}" />
+                            </DockPanel>
+                        </Border>
+                    </DockPanel>
+
+                    <!--  Separate folders  -->
+                    <StackPanel
+                        x:Name="SeparateFoldersPanel"
+                        local:Motion.Reveal="True"
+                        Visibility="Collapsed">
+                        <DockPanel Margin="0,0,0,6">
+                            <Button
+                                x:Name="BrowsePdfButton"
+                                Margin="8,0,0,0"
+                                AutomationProperties.Name="Choose PDF export folder"
+                                Click="BrowsePdfButton_Click"
+                                Content="Choose…"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource Button.Secondary}"
+                                ToolTip="Choose the folder for exported PDF files" />
+                            <Border Style="{StaticResource PathWell}">
+                                <DockPanel>
+                                    <Border
+                                        Margin="0,0,8,0"
+                                        Style="{StaticResource Badge.Accent}">
+                                        <TextBlock Text="PDF" />
+                                    </Border>
+                                    <TextBox
+                                        x:Name="PdfExportPathTextBox"
+                                        AutomationProperties.Name="PDF export folder"
+                                        Style="{StaticResource PathValue}" />
+                                </DockPanel>
+                            </Border>
+                        </DockPanel>
+                        <DockPanel>
+                            <Button
+                                x:Name="BrowseDwgButton"
+                                Margin="8,0,0,0"
+                                AutomationProperties.Name="Choose DWG export folder"
+                                Click="BrowseDwgButton_Click"
+                                Content="Choose…"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource Button.Secondary}"
+                                ToolTip="Choose the folder for exported DWG files" />
+                            <Border Style="{StaticResource PathWell}">
+                                <DockPanel>
+                                    <Border
+                                        Margin="0,0,8,0"
+                                        Style="{StaticResource Badge.Accent}">
+                                        <TextBlock Text="DWG" />
+                                    </Border>
+                                    <TextBox
+                                        x:Name="DwgExportPathTextBox"
+                                        AutomationProperties.Name="DWG export folder"
+                                        Style="{StaticResource PathValue}" />
+                                </DockPanel>
+                            </Border>
+                        </DockPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!--  The one primary action  -->
+                <Button
+                    x:Name="PrintButton"
+                    Grid.Column="3"
+                    Height="36"
+                    MinWidth="150"
+                    Padding="18,0"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.Name="Print and export selected sheets"
+                    Click="PrintButton_Click"
+                    IsDefault="False"
+                    Style="{StaticResource Button.Primary}"
+                    ToolTip="Print and export the selected sheets (Ctrl+Enter)">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="PrinterOutline" Style="{StaticResource ButtonIconLabel}" />
+                        <TextBlock x:Name="PrintButtonText" Text="Print" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

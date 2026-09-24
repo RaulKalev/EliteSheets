@@ -117,6 +117,12 @@ namespace EliteSheets.Services
             ["ExportPdfChip"] = ("Export selected sheets as PDF", "Ekspordi valitud joonised PDF-na"),
             ["ExportDwgChip"] = ("Export selected sheets as DWG", "Ekspordi valitud joonised DWG-na"),
 
+            // What's new (changelog popup)
+            ["WhatsNewTitle"] = ("What's new", "Mis on uut"),
+            ["WhatsNewVersion"] = ("Version {0} · {1}", "Versioon {0} · {1}"),
+            ["WhatsNewOlder"] = ("Version {0}", "Versioon {0}"),
+            ["GotIt"] = ("Got it", "Selge"),
+
             // Dialog buttons
             ["Yes"] = ("Yes", "Jah"),
             ["No"] = ("No", "Ei"),

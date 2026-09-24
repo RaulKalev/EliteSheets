@@ -109,9 +109,13 @@ namespace EliteSheets
             LoadThemeState();
             Loaded += (s, e) =>
             {
-                // run after the window is visible and Revit is idle
-                Dispatcher.BeginInvoke(new Action(EnsureTemplatePathConfigured),
-                    System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                // run after the window is visible and Revit is idle; the template prompt (modal) comes first,
+                // then the "what's new" popup, so the two never stack on top of each other
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    EnsureTemplatePathConfigured();
+                    UpdateLogService.CheckAndShow(this);
+                }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             };
             LoadTheme();
             DataContext = this;

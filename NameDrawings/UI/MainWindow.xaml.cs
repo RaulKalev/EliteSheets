@@ -98,6 +98,10 @@ namespace EliteSheets
             Loc.LanguageChanged += Loc_LanguageChanged;
             ProjectText.Text = doc.Title;
 
+            // Column widths are user-wide: restore them, and save whenever a column edge is released
+            LoadColumnWidths();
+            SheetsDataGrid.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler(SheetsDataGrid_ColumnResizeCompleted));
+
             // Theme + DataContext
             LoadThemeState();
             Loaded += (s, e) =>
@@ -556,6 +560,63 @@ namespace EliteSheets
             {
                 RevitTaskDialog.Show(Loc.Get("SaveErrorTitle"), Loc.Format("SettingsSaveError", ex.Message));
             }
+        }
+
+        private const string ColumnWidthsKey = "ColumnWidths";
+        private static readonly DataGridLengthConverter ColumnWidthConverter = new DataGridLengthConverter();
+
+        /// <summary>
+        /// Resizable sheet columns keyed by their bound property (Number / Name / Version), so saved widths
+        /// survive header text changes such as switching the UI language.
+        /// </summary>
+        private IEnumerable<KeyValuePair<string, DataGridColumn>> ResizableColumns() =>
+            SheetsDataGrid.Columns
+                .Where(c => c.CanUserResize)
+                .Select(c => new KeyValuePair<string, DataGridColumn>(
+                    ((c as DataGridBoundColumn)?.Binding as System.Windows.Data.Binding)?.Path?.Path, c))
+                .Where(kv => !string.IsNullOrEmpty(kv.Key));
+
+        /// <summary>Applies the user-wide column widths saved in config.json (as "180", "1*", "Auto").</summary>
+        private void LoadColumnWidths()
+        {
+            try
+            {
+                if (!File.Exists(ConfigFilePath)) return;
+
+                var config = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(ConfigFilePath));
+                if (config == null || !config.TryGetValue(ColumnWidthsKey, out var raw) ||
+                    !(raw is Newtonsoft.Json.Linq.JObject jObj))
+                    return;
+
+                var widths = jObj.ToObject<Dictionary<string, string>>();
+                foreach (var column in ResizableColumns())
+                {
+                    if (widths.TryGetValue(column.Key, out var text) && !string.IsNullOrWhiteSpace(text))
+                        column.Value.Width = (DataGridLength)ColumnWidthConverter.ConvertFromInvariantString(text);
+                }
+            }
+            catch (Exception ex)
+            {
+                // A bad value only costs the saved layout; the XAML defaults stay in place.
+                Logger.Log("Failed to load column widths.", ex);
+            }
+        }
+
+        private void SaveColumnWidths()
+        {
+            if (SheetsDataGrid == null) return;
+
+            var widths = ResizableColumns().ToDictionary(
+                kv => kv.Key,
+                kv => ColumnWidthConverter.ConvertToInvariantString(kv.Value.Width));
+            SaveGlobalSetting(ColumnWidthsKey, widths);
+        }
+
+        /// <summary>Saves as soon as a column edge is released (the header gripper is a Thumb).</summary>
+        private void SheetsDataGrid_ColumnResizeCompleted(object sender, DragCompletedEventArgs e)
+        {
+            if ((e.OriginalSource as Thumb)?.TemplatedParent is DataGridColumnHeader)
+                SaveColumnWidths();
         }
 
         #endregion
@@ -1038,6 +1099,7 @@ namespace EliteSheets
                 Loc.LanguageChanged -= Loc_LanguageChanged;
                 
                 SaveThemeState();
+                SaveColumnWidths(); // also covers double-click auto-size on a column edge (no drag event)
 
                 if (SheetsDataGrid != null) SheetsDataGrid.ItemsSource = null;
                 foreach (var item in Sheets) item.PropertyChanged -= SheetItem_PropertyChanged;

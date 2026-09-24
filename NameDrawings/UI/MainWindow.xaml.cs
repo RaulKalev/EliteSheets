@@ -89,11 +89,14 @@ namespace EliteSheets
             _doc = doc;
             _currentView = currentView;
 
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            // Last size/position (user-wide); centred on first use or if the saved spot is off-screen
+            RestoreWindowPlacement();
 
             // Window infrastructure (resize, snap and drag come from WindowChrome)
+            Closing += (s, e) => SaveWindowPlacement(); // bounds are still valid while closing
             Closed += MainWindow_Closed;
             StateChanged += (s, e) => UpdateMaximizedState();
+            UpdateMaximizedState(); // the window may reopen maximized
             PreviewKeyDown += MainWindow_PreviewKeyDown;
             Loc.LanguageChanged += Loc_LanguageChanged;
             ProjectText.Text = doc.Title;
@@ -1023,6 +1026,69 @@ namespace EliteSheets
         #endregion
 
         #region Window chrome / keyboard
+
+        private const string WindowPlacementKey = "WindowPlacement";
+
+        /// <summary>
+        /// Restores the last size and position (user-wide, config.json "WindowPlacement"). Falls back to the XAML
+        /// size centred on screen on first use, or when the saved spot no longer overlaps any screen (e.g. a monitor
+        /// was unplugged). A maximized window reopens maximized; minimized is never restored.
+        /// </summary>
+        private void RestoreWindowPlacement()
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            try
+            {
+                if (!File.Exists(ConfigFilePath)) return;
+
+                var config = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(ConfigFilePath));
+                if (config == null || !config.TryGetValue(WindowPlacementKey, out var raw) ||
+                    !(raw is Newtonsoft.Json.Linq.JObject p))
+                    return;
+
+                double left = (double?)p["Left"] ?? double.NaN, top = (double?)p["Top"] ?? double.NaN;
+                double width = (double?)p["Width"] ?? double.NaN, height = (double?)p["Height"] ?? double.NaN;
+                if (new[] { left, top, width, height }.Any(double.IsNaN)) return;
+
+                Width = Math.Max(MinWidth, width);
+                Height = Math.Max(MinHeight, height);
+
+                // Keep the position only if enough of the title area lands on the virtual desktop to grab it.
+                var desktop = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                       SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+                var titleArea = new Rect(left, top, Width, 52);
+                titleArea.Intersect(desktop);
+                if (!titleArea.IsEmpty && titleArea.Width >= 120 && titleArea.Height >= 24)
+                {
+                    WindowStartupLocation = WindowStartupLocation.Manual;
+                    Left = left;
+                    Top = top;
+                }
+
+                if ((bool?)p["Maximized"] == true)
+                    WindowState = WindowState.Maximized;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log("Failed to restore window placement.", ex);
+            }
+        }
+
+        private void SaveWindowPlacement()
+        {
+            // RestoreBounds is the normal (un-maximized) rectangle, so maximizing doesn't overwrite the saved size.
+            var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+            if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0) return;
+
+            SaveGlobalSetting(WindowPlacementKey, new Dictionary<string, object>
+            {
+                ["Left"] = Math.Round(bounds.Left),
+                ["Top"] = Math.Round(bounds.Top),
+                ["Width"] = Math.Round(bounds.Width),
+                ["Height"] = Math.Round(bounds.Height),
+                ["Maximized"] = WindowState == WindowState.Maximized
+            });
+        }
 
         private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 

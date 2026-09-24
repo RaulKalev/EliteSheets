@@ -44,7 +44,7 @@ namespace EliteSheets.Commands
                 Services.Loc.Load();
 
                 _window = new MainWindow(uiDoc, doc, currentView);
-                _window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                // Placement (saved size/position, or centred on first use) is set by the window itself
 
                 var owner = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
                 new WindowInteropHelper(_window) { Owner = owner };

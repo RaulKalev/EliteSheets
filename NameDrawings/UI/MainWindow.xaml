@@ -7,7 +7,7 @@
     xmlns:local="clr-namespace:EliteSheets"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="Jooniste printimine"
+    Title="{helpers:Tr AppTitle}"
     Width="1000"
     Height="700"
     MinWidth="1000"
@@ -199,7 +199,7 @@
                             Foreground="{DynamicResource ForegroundBrush}"
                             IsHitTestVisible="False"
                             Opacity="0.5"
-                            Text="Search...">
+                            Text="{helpers:Tr SearchPlaceholder}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -215,7 +215,7 @@
                         <!--  Search textbox  -->
                         <TextBox
                             x:Name="SheetSearchTextBox"
-                            AutomationProperties.Name="Search sheets"
+                            AutomationProperties.Name="{helpers:Tr SearchSheets}"
                             Grid.Column="1"
                             Width="150"
                             Margin="0"
@@ -226,12 +226,12 @@
                             FontSize="12"
                             Foreground="{DynamicResource ForegroundBrush}"
                             TextChanged="SheetSearchTextBox_TextChanged"
-                            ToolTip="Search (Number / Name / Version / Size)" />
+                            ToolTip="{helpers:Tr SearchTooltip}" />
 
                         <!--  Clear button  -->
                         <Button
                             x:Name="ClearSearchButton"
-                            AutomationProperties.Name="Clear search"
+                            AutomationProperties.Name="{helpers:Tr ClearSearch}"
                             Grid.Column="2"
                             Width="24"
                             Height="24"
@@ -239,7 +239,7 @@
                             BorderBrush="Transparent"
                             Click="ClearSearchButton_Click"
                             Style="{StaticResource FlatIconButton}"
-                            ToolTip="Clear">
+                            ToolTip="{helpers:Tr Clear}">
                             <materialDesign:PackIcon
                                 Width="16"
                                 Height="16"
@@ -253,9 +253,10 @@
 
                 <Grid
                     Grid.Row="0"
-                    Margin="0,0,100,0"
+                    Margin="0,0,70,0"
                     HorizontalAlignment="Right">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -263,19 +264,19 @@
                     <!--  NEW: Reload button (to the left of theme toggle)  -->
                     <Button
                         x:Name="ReloadButton"
-                        AutomationProperties.Name="Reload sheets"
+                        AutomationProperties.Name="{helpers:Tr ReloadSheets}"
                         Grid.Column="0"
                         Margin="0,0,30,0"
                         Click="ReloadButton_Click"
                         Style="{StaticResource ReloadButtonStyle}"
-                        ToolTip="Reload">
+                        ToolTip="{helpers:Tr Reload}">
                         <materialDesign:PackIcon Kind="Refresh" Style="{StaticResource ReloadIconStyle}" />
                     </Button>
 
                     <!--  Existing theme toggle  -->
                     <ToggleButton
                         x:Name="ThemeToggleButton"
-                        AutomationProperties.Name="Toggle Theme"
+                        AutomationProperties.Name="{helpers:Tr ToggleTheme}"
                         Grid.Column="1"
                         Width="28"
                         Height="15.5"
@@ -283,7 +284,7 @@
                         BorderBrush="Transparent"
                         Click="ToggleTheme_Click"
                         IsChecked="True"
-                        ToolTip="Toggle Theme">
+                        ToolTip="{helpers:Tr ToggleTheme}">
                         <ToggleButton.Template>
                             <ControlTemplate TargetType="{x:Type ToggleButton}">
                                 <Grid Background="Transparent">
@@ -307,6 +308,24 @@
                             </ControlTemplate>
                         </ToggleButton.Template>
                     </ToggleButton>
+
+                    <!--  Language toggle (EN / ET)  -->
+                    <Button
+                        x:Name="LanguageToggleButton"
+                        Grid.Column="2"
+                        Margin="12,0,0,0"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{helpers:Tr SwitchLanguage}"
+                        Click="LanguageToggle_Click"
+                        Style="{StaticResource FlatIconButton}"
+                        ToolTip="{helpers:Tr SwitchLanguage}">
+                        <TextBlock
+                            FontSize="13"
+                            FontWeight="Bold"
+                            Foreground="{DynamicResource IconBrush}"
+                            Text="{helpers:Tr LanguageShort}" />
+                    </Button>
                 </Grid>
 
 
@@ -345,10 +364,10 @@
                                         <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <CheckBox
                                                 x:Name="CheckAllBox"
-                                                AutomationProperties.Name="Select all sheets"
+                                                AutomationProperties.Name="{helpers:Tr SelectAllSheets}"
                                                 Click="CheckAllBox_Click"
                                                 Style="{StaticResource DatagridCheckboxStyle}"
-                                                ToolTip="Check/Uncheck All" />
+                                                ToolTip="{helpers:Tr CheckUncheckAll}" />
                                         </Grid>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.HeaderTemplate>
@@ -360,7 +379,7 @@
                                                 IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                 Style="{StaticResource DatagridCheckboxStyle}">
                                                 <AutomationProperties.Name>
-                                                    <MultiBinding StringFormat="Select sheet {0} - {1}">
+                                                    <MultiBinding StringFormat="{helpers:Tr SelectSheetFormat}">
                                                         <Binding Path="Number" />
                                                         <Binding Path="Name" />
                                                     </MultiBinding>
@@ -375,7 +394,7 @@
                             <DataGridTextColumn
                                 Width="*"
                                 Binding="{Binding Number}"
-                                Header="Joonise Number"
+                                Header="{helpers:Tr ColSheetNumber}"
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle}"
                                 IsReadOnly="True" />
 
@@ -383,7 +402,7 @@
                             <DataGridTextColumn
                                 Width="*"
                                 Binding="{Binding Name}"
-                                Header="Joonise nimi"
+                                Header="{helpers:Tr ColSheetName}"
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle}"
                                 IsReadOnly="True" />
 
@@ -392,7 +411,7 @@
                                 Width="75"
                                 Binding="{Binding Version}"
                                 ElementStyle="{StaticResource CenterAlignedCellStyle}"
-                                Header="Versioon"
+                                Header="{helpers:Tr ColVersion}"
                                 HeaderStyle="{StaticResource MultiRowHeaderStyle}"
                                 IsReadOnly="True" />
 
@@ -425,23 +444,23 @@
                                 <CheckBox
                                     x:Name="DwgExportCheckbox"
                                     Margin="0,0,20,0"
-                                    AutomationProperties.Name="Export to DWG"
+                                    AutomationProperties.Name="{helpers:Tr ExportToDwg}"
                                     Content="DWG"
                                     FontSize="24"
                                     FontWeight="Bold"
                                     IsChecked="True"
                                     Style="{StaticResource CustomCheckboxStyle}"
-                                    ToolTip="Export to DWG format" />
+                                    ToolTip="{helpers:Tr ExportToDwgTooltip}" />
                                 <CheckBox
                                     x:Name="PdfExportCheckbox"
                                     Margin="0,0,20,0"
-                                    AutomationProperties.Name="Export to PDF"
+                                    AutomationProperties.Name="{helpers:Tr ExportToPdf}"
                                     Content="PDF"
                                     FontSize="24"
                                     FontWeight="Bold"
                                     IsChecked="True"
                                     Style="{StaticResource CustomCheckboxStyle}"
-                                    ToolTip="Export to PDF format" />
+                                    ToolTip="{helpers:Tr ExportToPdfTooltip}" />
                             </StackPanel>
 
                             <StackPanel
@@ -454,7 +473,7 @@
                                     VerticalAlignment="Center"
                                     FontSize="12"
                                     Foreground="{DynamicResource ForegroundBrush}"
-                                    Text="DWG Export settings:" />
+                                    Text="{helpers:Tr DwgExportSettings}" />
                                 <ComboBox
                                     x:Name="DwgExportComboBox"
                                     Width="100"
@@ -463,7 +482,7 @@
                                     AutomationProperties.LabeledBy="{Binding ElementName=DwgExportSettingsLabel}"
                                     DisplayMemberPath="Name"
                                     Style="{StaticResource DarkThemeComboBox}"
-                                    ToolTip="Select DWG Export Setup" />
+                                    ToolTip="{helpers:Tr SelectDwgSetup}" />
                             </StackPanel>
 
                             <StackPanel
@@ -476,22 +495,22 @@
                                     Width="80"
                                     Height="25"
                                     Margin="0,0,5,0"
-                                    AutomationProperties.Name="Browse for export folder"
+                                    AutomationProperties.Name="{helpers:Tr BrowseExportFolder}"
                                     Click="BrowseButton_Click"
-                                    Content="Browse"
+                                    Content="{helpers:Tr Browse}"
                                     FontSize="14"
                                     Style="{StaticResource CustomActionButtonStyle}"
-                                    ToolTip="Select a folder for exported files" />
+                                    ToolTip="{helpers:Tr BrowseExportFolderTooltip}" />
                                 <TextBox
                                     x:Name="ExportPathTextBox"
                                     Height="25"
                                     MinWidth="300"
                                     VerticalContentAlignment="Center"
-                                    AutomationProperties.Name="Export path"
+                                    AutomationProperties.Name="{helpers:Tr ExportPath}"
                                     IsReadOnly="True"
                                     Style="{StaticResource CustomTextBoxStyle}"
                                     Text="C:\Path\To\Export"
-                                    ToolTip="Selected export path" />
+                                    ToolTip="{helpers:Tr ExportPathTooltip}" />
                             </StackPanel>
 
                             <StackPanel x:Name="SeparateFoldersPanel" Visibility="Collapsed">
@@ -504,21 +523,21 @@
                                         Width="80"
                                         Height="25"
                                         Margin="0,0,5,0"
-                                        AutomationProperties.Name="Browse for PDF export folder"
+                                        AutomationProperties.Name="{helpers:Tr BrowsePdfFolder}"
                                         Click="BrowsePdfButton_Click"
                                         Content="PDF..."
                                         FontSize="14"
                                         Style="{StaticResource CustomActionButtonStyle}"
-                                        ToolTip="Select a folder for exported PDF files" />
+                                        ToolTip="{helpers:Tr BrowsePdfFolderTooltip}" />
                                     <TextBox
                                         x:Name="PdfExportPathTextBox"
                                         Height="25"
                                         MinWidth="300"
                                         VerticalContentAlignment="Center"
-                                        AutomationProperties.Name="PDF export path"
+                                        AutomationProperties.Name="{helpers:Tr PdfExportPath}"
                                         IsReadOnly="True"
                                         Style="{StaticResource CustomTextBoxStyle}"
-                                        ToolTip="Selected PDF export path" />
+                                        ToolTip="{helpers:Tr PdfExportPathTooltip}" />
                                 </StackPanel>
                                 <StackPanel
                                     Margin="0,5,0,0"
@@ -529,35 +548,44 @@
                                         Width="80"
                                         Height="25"
                                         Margin="0,0,5,0"
-                                        AutomationProperties.Name="Browse for DWG export folder"
+                                        AutomationProperties.Name="{helpers:Tr BrowseDwgFolder}"
                                         Click="BrowseDwgButton_Click"
                                         Content="DWG..."
                                         FontSize="14"
                                         Style="{StaticResource CustomActionButtonStyle}"
-                                        ToolTip="Select a folder for exported DWG files" />
+                                        ToolTip="{helpers:Tr BrowseDwgFolderTooltip}" />
                                     <TextBox
                                         x:Name="DwgExportPathTextBox"
                                         Height="25"
                                         MinWidth="300"
                                         VerticalContentAlignment="Center"
-                                        AutomationProperties.Name="DWG export path"
+                                        AutomationProperties.Name="{helpers:Tr DwgExportPath}"
                                         IsReadOnly="True"
                                         Style="{StaticResource CustomTextBoxStyle}"
-                                        ToolTip="Selected DWG export path" />
+                                        ToolTip="{helpers:Tr DwgExportPathTooltip}" />
                                 </StackPanel>
                             </StackPanel>
 
-                            <CheckBox
-                                x:Name="SeparateFoldersCheckbox"
+                            <StackPanel
                                 Margin="0,8,0,0"
                                 HorizontalAlignment="Left"
-                                AutomationProperties.Name="Use separate folders for PDF and DWG"
-                                Click="SeparateFoldersCheckbox_Click"
-                                helpers:CheckboxAssist.IconSize="16"
-                                Content="Separate PDF / DWG folders"
-                                FontSize="12"
-                                Style="{StaticResource CustomCheckboxStyle}"
-                                ToolTip="Export PDF and DWG files to different folders" />
+                                Orientation="Horizontal">
+                                <CheckBox
+                                    x:Name="SeparateFoldersCheckbox"
+                                    Margin="0,0,20,0"
+                                    AutomationProperties.Name="{helpers:Tr SeparateFoldersName}"
+                                    Click="SeparateFoldersCheckbox_Click"
+                                    Content="{helpers:Tr SeparateFolders}"
+                                    Style="{StaticResource CompactCheckboxStyle}"
+                                    ToolTip="{helpers:Tr SeparateFoldersTooltip}" />
+                                <CheckBox
+                                    x:Name="ConvertMergedToDwgCheckbox"
+                                    AutomationProperties.Name="{helpers:Tr MergedAsDwgName}"
+                                    Click="ConvertMergedToDwgCheckbox_Click"
+                                    Content="{helpers:Tr MergedAsDwg}"
+                                    Style="{StaticResource CompactCheckboxStyle}"
+                                    ToolTip="{helpers:Tr MergedAsDwgTooltip}" />
+                            </StackPanel>
                         </StackPanel>
 
                         <!--  Right column: print button  -->
@@ -571,13 +599,13 @@
                                 Width="200"
                                 Height="100"
                                 VerticalAlignment="Center"
-                                AutomationProperties.Name="Print and export selected sheets"
+                                AutomationProperties.Name="{helpers:Tr PrintTooltip}"
                                 Click="PrintButton_Click"
-                                Content="Print"
+                                Content="{helpers:Tr Print}"
                                 FontSize="24"
                                 FontWeight="Bold"
                                 Style="{StaticResource CustomActionButtonStyle}"
-                                ToolTip="Print and export selected sheets" />
+                                ToolTip="{helpers:Tr PrintTooltip}" />
                         </StackPanel>
                     </Grid>
                 </materialDesign:Card>

@@ -40,6 +40,9 @@ namespace EliteSheets.Commands
                 Document doc = uiDoc.Document;
                 View currentView = doc.ActiveView;
 
+                // Pick up the saved UI language before any window text is created
+                Services.Loc.Load();
+
                 _window = new MainWindow(uiDoc, doc, currentView);
                 _window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
 

@@ -370,6 +370,42 @@
         </Setter>
     </Style>
 
+    <!--  Small text checkbox: the icon is always as tall and wide as the label text  -->
+    <Style x:Key="CompactCheckboxStyle" TargetType="{x:Type CheckBox}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type CheckBox}">
+                    <StackPanel
+                        Background="Transparent"
+                        Orientation="Horizontal">
+                        <materialDesign:PackIcon
+                            x:Name="CheckboxIcon"
+                            Width="{Binding ActualHeight, ElementName=CheckboxLabel}"
+                            Height="{Binding ActualHeight, ElementName=CheckboxLabel}"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource IconForegroundBrush}"
+                            Kind="CheckboxBlankOutline" />
+                        <TextBlock
+                            x:Name="CheckboxLabel"
+                            Margin="5,0,0,0"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource ForegroundBrush}"
+                            Text="{TemplateBinding Content}" />
+                    </StackPanel>
+
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="CheckboxIcon" Property="Kind" Value="CheckboxMarkedOutline" />
+                            <Setter TargetName="CheckboxIcon" Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Custom Reload Button Style -->
     <Style x:Key="ReloadButtonStyle" TargetType="{x:Type Button}">
         <Setter Property="Background" Value="Transparent" />

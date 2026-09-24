@@ -3,6 +3,7 @@ using Autodesk.Revit.UI;
 using EliteSheets.ExternalEvents;
 using EliteSheets.Helpers;
 using EliteSheets.Models;
+using EliteSheets.Services;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -94,6 +95,7 @@ namespace EliteSheets
             Closed += MainWindow_Closed;
             StateChanged += (s, e) => UpdateMaximizedState();
             PreviewKeyDown += MainWindow_PreviewKeyDown;
+            Loc.LanguageChanged += Loc_LanguageChanged;
             ProjectText.Text = doc.Title;
 
             // Theme + DataContext
@@ -166,14 +168,14 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load theme: {ex.Message}", "Theme Load Error",
+                MessageBox.Show(Loc.Format("ThemeLoadError", ex.Message), Loc.Get("ThemeLoadErrorTitle"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
 
             ThemeIcon.Kind = _isDarkMode
                 ? MaterialDesignThemes.Wpf.PackIconKind.WeatherNight
                 : MaterialDesignThemes.Wpf.PackIconKind.WhiteBalanceSunny;
-            ThemeButton.ToolTip = _isDarkMode ? "Dark appearance \u2013 switch to light" : "Light appearance \u2013 switch to dark";
+            ThemeButton.ToolTip = Loc.Get(_isDarkMode ? "ThemeDarkTooltip" : "ThemeLightTooltip");
         }
 
         private void ToggleTheme_Click(object sender, RoutedEventArgs e)
@@ -181,6 +183,20 @@ namespace EliteSheets
             _isDarkMode = !_isDarkMode;
             LoadTheme();
             SaveThemeState();
+        }
+
+        private void LanguageToggle_Click(object sender, RoutedEventArgs e)
+        {
+            // Saved user-wide; bound text in this window updates immediately
+            Loc.Save(Loc.Language == Loc.English ? Loc.Estonian : Loc.English);
+        }
+
+        /// <summary>XAML text follows through {helpers:Tr} bindings; text set from code is rebuilt here.</summary>
+        private void Loc_LanguageChanged(object sender, EventArgs e)
+        {
+            ThemeButton.ToolTip = Loc.Get(_isDarkMode ? "ThemeDarkTooltip" : "ThemeLightTooltip");
+            UpdateMaximizedState();
+            UpdateSelectionSummary();
         }
 
         private void LoadThemeState()
@@ -199,12 +215,15 @@ namespace EliteSheets
 
                         if (config.TryGetValue("TemplateDxfPath", out var templateObj))
                             _templateDxfPath = templateObj?.ToString() ?? string.Empty;
+
+                        if (config.TryGetValue(ConvertMergedToDwgKey, out var convertObj) && convertObj is bool convert)
+                            ConvertMergedToDwgCheckbox.IsChecked = convert;
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load theme/config: {ex.Message}", "Load Error",
+                MessageBox.Show(Loc.Format("ConfigLoadError", ex.Message), Loc.Get("LoadErrorTitle"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -232,7 +251,7 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to save settings: {ex.Message}", "Save Error",
+                MessageBox.Show(Loc.Format("SettingsSaveError", ex.Message), Loc.Get("SaveErrorTitle"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -252,16 +271,12 @@ namespace EliteSheets
             string suggestedFolder = $@"C:\Users\{user}\EULE Dropbox\0_EULE  Team folder (kogu kollektiiv)\02_EULE REVIT TEMPLATE";
 
 
-            MessageBox.Show(
-                "Palun vali DXF template KilbiTemplate.dxf (tingimata .dxf). " +
-                "Soovitatav asukoht avatakse dialoogis automaatselt." +
-                "\nFail asub kaustas:  \\EULE Dropbox\\0_EULE  Team folder (kogu kollektiiv)\\02_EULE REVIT TEMPLATE ",
-                "Vajalik seadistus", MessageBoxButton.OK, MessageBoxImage.Information);
+            ThemedMessageDialog.Show(this, Loc.Get("TemplateSetupTitle"), Loc.Get("TemplateSetupMessage"), ThemedDialogKind.Info);
 
             var dlg = new OpenFileDialog
             {
-                Title = "Vali mall (DXF)",
-                Filter = "DXF fail (*.dxf)|*.dxf",
+                Title = Loc.Get("TemplatePickTitle"),
+                Filter = Loc.Get("DxfFileFilter"),
                 CheckFileExists = true,
                 Multiselect = false,
                 InitialDirectory = Directory.Exists(suggestedFolder)
@@ -428,7 +443,7 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                RevitTaskDialog.Show("Save Error", $"Failed to save export settings:\n{ex.Message}");
+                RevitTaskDialog.Show(Loc.Get("SaveErrorTitle"), Loc.Format("ExportSettingsSaveError", ex.Message));
             }
         }
 
@@ -466,7 +481,7 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                RevitTaskDialog.Show("Load Error", $"Failed to load export path:\n{ex.Message}");
+                RevitTaskDialog.Show(Loc.Get("LoadErrorTitle"), Loc.Format("ExportPathLoadError", ex.Message));
             }
         }
 
@@ -501,6 +516,46 @@ namespace EliteSheets
 
             UpdateFolderPanels();
             SaveProjectSetting(SeparateExportFoldersKey, UseSeparateFolders ? "true" : "false");
+        }
+
+        private const string ConvertMergedToDwgKey = "ConvertMergedToDwg";
+
+        private void ConvertMergedToDwgCheckbox_Click(object sender, RoutedEventArgs e)
+        {
+            if (ConvertMergedToDwgCheckbox.IsChecked == true &&
+                EliteSheets.Services.OdaConverterService.FindConverter() == null)
+            {
+                ConvertMergedToDwgCheckbox.IsChecked = false;
+                ThemedMessageDialog.Show(this, Loc.Get("OdaNotFoundTitle"), Loc.Get("OdaNotFoundMessage"));
+                return;
+            }
+
+            SaveGlobalSetting(ConvertMergedToDwgKey, ConvertMergedToDwgCheckbox.IsChecked == true);
+        }
+
+        /// <summary>
+        /// Stores a user-wide value at the root of the config, preserving all other keys.
+        /// </summary>
+        private void SaveGlobalSetting(string key, object value)
+        {
+            try
+            {
+                var config = new Dictionary<string, object>();
+                if (File.Exists(ConfigFilePath))
+                {
+                    config = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(ConfigFilePath))
+                             ?? new Dictionary<string, object>();
+                }
+
+                config[key] = value;
+
+                Directory.CreateDirectory(Path.GetDirectoryName(ConfigFilePath));
+                File.WriteAllText(ConfigFilePath, JsonConvert.SerializeObject(config, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                RevitTaskDialog.Show(Loc.Get("SaveErrorTitle"), Loc.Format("SettingsSaveError", ex.Message));
+            }
         }
 
         #endregion
@@ -597,7 +652,7 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                RevitTaskDialog.Show("Error", $"Failed to load DWG export setups: {ex.Message}");
+                RevitTaskDialog.Show(Loc.Get("ErrorTitle"), Loc.Format("DwgSetupsLoadError", ex.Message));
             }
         }
 
@@ -619,20 +674,20 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                Autodesk.Revit.UI.TaskDialog.Show("Reload Error", $"Failed to reload data: {ex.Message}");
+                Autodesk.Revit.UI.TaskDialog.Show(Loc.Get("ReloadErrorTitle"), Loc.Format("ReloadError", ex.Message));
             }
             _sheetsView?.Refresh();
             UpdateSelectionSummary();
         }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)
-            => BrowseForFolder("Select export folder", ExportPathTextBox, ExportPathsKey);
+            => BrowseForFolder(Loc.Get("BrowseExportFolderTooltip"), ExportPathTextBox, ExportPathsKey);
 
         private void BrowsePdfButton_Click(object sender, RoutedEventArgs e)
-            => BrowseForFolder("Select PDF export folder", PdfExportPathTextBox, PdfExportPathsKey);
+            => BrowseForFolder(Loc.Get("BrowsePdfFolderTooltip"), PdfExportPathTextBox, PdfExportPathsKey);
 
         private void BrowseDwgButton_Click(object sender, RoutedEventArgs e)
-            => BrowseForFolder("Select DWG export folder", DwgExportPathTextBox, DwgExportPathsKey);
+            => BrowseForFolder(Loc.Get("BrowseDwgFolderTooltip"), DwgExportPathTextBox, DwgExportPathsKey);
 
         private void BrowseForFolder(string description, System.Windows.Controls.TextBox target, string configKey)
         {
@@ -659,7 +714,7 @@ namespace EliteSheets
             }
             catch (Exception ex)
             {
-                RevitTaskDialog.Show("Browse Error", ex.Message);
+                RevitTaskDialog.Show(Loc.Get("BrowseErrorTitle"), ex.Message);
             }
         }
 
@@ -669,7 +724,7 @@ namespace EliteSheets
             var selected = Sheets.Where(s => s.IsChecked).ToList();
             if (!selected.Any())
             {
-                RevitTaskDialog.Show("Error", "No sheets selected.");
+                ThemedMessageDialog.Show(this, Loc.Get("ErrorTitle"), Loc.Get("NoSheetsSelected"));
                 return;
             }
 
@@ -679,7 +734,7 @@ namespace EliteSheets
 
             if (!exportDwg && !exportPdf && !exportDxf)
             {
-                RevitTaskDialog.Show("Info", "Neither DWG, DXF nor PDF export is selected.");
+                ThemedMessageDialog.Show(this, Loc.Get("InfoTitle"), Loc.Get("NoFormatSelected"), ThemedDialogKind.Info);
                 return;
             }
 
@@ -691,12 +746,12 @@ namespace EliteSheets
 
                 if (exportPdf && (string.IsNullOrWhiteSpace(pdfExportPath) || !Directory.Exists(pdfExportPath)))
                 {
-                    RevitTaskDialog.Show("Error", "Please select a valid PDF export folder.");
+                    ThemedMessageDialog.Show(this, Loc.Get("ErrorTitle"), Loc.Get("InvalidPdfFolder"));
                     return;
                 }
                 if ((exportDwg || exportDxf) && (string.IsNullOrWhiteSpace(dwgExportPath) || !Directory.Exists(dwgExportPath)))
                 {
-                    RevitTaskDialog.Show("Error", "Please select a valid DWG export folder.");
+                    ThemedMessageDialog.Show(this, Loc.Get("ErrorTitle"), Loc.Get("InvalidDwgFolder"));
                     return;
                 }
             }
@@ -705,7 +760,7 @@ namespace EliteSheets
                 exportPath = ExportPathTextBox.Text?.Trim();
                 if (string.IsNullOrWhiteSpace(exportPath) || !Directory.Exists(exportPath))
                 {
-                    RevitTaskDialog.Show("Error", "Please select a valid export folder.");
+                    ThemedMessageDialog.Show(this, Loc.Get("ErrorTitle"), Loc.Get("InvalidExportFolder"));
                     return;
                 }
             }
@@ -713,7 +768,7 @@ namespace EliteSheets
             var exportSetup = DwgExportComboBox.SelectedItem as ExportDWGSettings;
             if (exportDwg && exportSetup == null)
             {
-                RevitTaskDialog.Show("Error", "Please select a DWG export setup.");
+                ThemedMessageDialog.Show(this, Loc.Get("ErrorTitle"), Loc.Get("NoDwgSetup"));
                 return;
             }
 
@@ -730,22 +785,19 @@ namespace EliteSheets
 
             if (invalidSheets.Any())
             {
-                var message = "Järgnevatel lehtedel on mittesobivad märgid nende lehenumbris:\n\n" +
+                var message = Loc.Get("InvalidNumbersIntro") + "\n\n" +
                               string.Join("\n", invalidSheets.Select(i => $"• \"{i.Sheet.Number}\" → {i.Invalid}")) +
-                              "\n\nWindows ei luba järgmisi märke failinimedes:\n" +
+                              "\n\n" + Loc.Get("InvalidNumbersWindows") + "\n" +
                               string.Join(" ", forbidden.Select(c => $"'{c}'")) +
-                              "\n\nKas soovid eksportida ülejäänud lehed?";
+                              "\n\n" + Loc.Get("InvalidNumbersQuestion");
 
-                var result = RevitTaskDialog.Show("Mittesobivad joonise numbrid", message,
-                    TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                    TaskDialogResult.No);
-
-                if (result == TaskDialogResult.No) return;
+                if (!ThemedMessageDialog.AskYesNo(this, Loc.Get("InvalidNumbersTitle"), message, ThemedDialogKind.Warning))
+                    return;
 
                 selected = selected.Except(invalidSheets.Select(i => i.Sheet)).ToList();
                 if (!selected.Any())
                 {
-                    RevitTaskDialog.Show("No Valid Sheets", "All selected sheets have invalid characters. Nothing to export.");
+                    ThemedMessageDialog.Show(this, Loc.Get("NoValidSheetsTitle"), Loc.Get("NoValidSheets"));
                     return;
                 }
             }
@@ -759,7 +811,7 @@ namespace EliteSheets
 
             if (!sheetElements.Any())
             {
-                RevitTaskDialog.Show("Error", "Could not resolve selected sheets in the document.");
+                ThemedMessageDialog.Show(this, Loc.Get("ErrorTitle"), Loc.Get("SheetsNotResolved"), ThemedDialogKind.Error);
                 return;
             }
 
@@ -783,6 +835,8 @@ namespace EliteSheets
             _exportHandler.ExportDwg = exportDwg;
             _exportHandler.ExportDxf = exportDxf;
             _exportHandler.TemplateDxfPath = _templateDxfPath;
+            _exportHandler.ConvertMergedToDwg = ConvertMergedToDwgCheckbox.IsChecked == true;
+            _exportHandler.OwnerWindow = this;
 
             _exportEvent.Raise();
 
@@ -852,12 +906,12 @@ namespace EliteSheets
             var selected = Sheets.Count(s => s.IsChecked);
             var anyFormat = PdfExportCheckbox.IsChecked == true || DwgExportCheckbox.IsChecked == true;
 
-            if (Sheets.Count == 0) SelectionText.Text = "No sheets in this model";
-            else if (!anyFormat) SelectionText.Text = "Choose PDF or DWG to export";
-            else if (selected == 0) SelectionText.Text = $"{Sheets.Count} sheets \u00b7 none selected";
-            else SelectionText.Text = $"{selected} of {Sheets.Count} selected";
+            if (Sheets.Count == 0) SelectionText.Text = Loc.Get("NoSheetsInModel");
+            else if (!anyFormat) SelectionText.Text = Loc.Get("ChooseFormat");
+            else if (selected == 0) SelectionText.Text = Loc.Format("NoneSelected", Sheets.Count);
+            else SelectionText.Text = Loc.Format("SelectedOfTotal", selected, Sheets.Count);
 
-            PrintButtonText.Text = selected == 0 ? "Print" : selected == 1 ? "Print 1 sheet" : $"Print {selected} sheets";
+            PrintButtonText.Text = selected == 0 ? Loc.Get("Print") : selected == 1 ? Loc.Get("PrintOne") : Loc.Format("PrintMany", selected);
             PrintButton.IsEnabled = selected > 0 && anyFormat;
 
             var visible = VisibleSheets().ToList();
@@ -873,10 +927,8 @@ namespace EliteSheets
             if (isEmpty)
             {
                 var searching = query.Length > 0;
-                EmptyTitle.Text = searching ? "No matching sheets" : "No sheets";
-                EmptyDetail.Text = searching
-                    ? $"Nothing matches \u201c{query}\u201d. Try a sheet number, part of a name or a version."
-                    : "This model has no sheets yet. Create sheets in Revit, then reload.";
+                EmptyTitle.Text = Loc.Get(searching ? "EmptySearchTitle" : "EmptyModelTitle");
+                EmptyDetail.Text = searching ? Loc.Format("EmptySearchDetail", query) : Loc.Get("EmptyModelDetail");
                 EmptyClearButton.Visibility = searching ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             }
         }
@@ -925,8 +977,9 @@ namespace EliteSheets
             var frame = SystemParameters.WindowResizeBorderThickness;
             RootGrid.Margin = maximized ? new Thickness(frame.Left + 4, frame.Top + 4, frame.Right + 4, frame.Bottom + 4) : new Thickness(0);
             MaximizeIcon.Kind = maximized ? MaterialDesignThemes.Wpf.PackIconKind.WindowRestore : MaterialDesignThemes.Wpf.PackIconKind.WindowMaximize;
-            MaximizeButton.ToolTip = maximized ? "Restore down" : "Maximize";
-            System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, maximized ? "Restore down" : "Maximize");
+            var label = Loc.Get(maximized ? "Restore" : "Maximize");
+            MaximizeButton.ToolTip = label;
+            System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, label);
         }
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -982,6 +1035,7 @@ namespace EliteSheets
             try
             {
                 Closed -= MainWindow_Closed;
+                Loc.LanguageChanged -= Loc_LanguageChanged;
                 
                 SaveThemeState();
 

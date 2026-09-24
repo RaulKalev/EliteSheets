@@ -32,6 +32,11 @@ namespace EliteSheets.ExternalEvents
         public bool ExportDwg { get; set; } = true;
         public bool ExportDxf { get; set; } = false;
         public string TemplateDxfPath { get; set; }
+        /// <summary>When true, merged group DXFs are converted to DWG with ODA File Converter.</summary>
+        public bool ConvertMergedToDwg { get; set; }
+        /// <summary>Plugin window that result dialogs are shown on top of.</summary>
+        public System.Windows.Window OwnerWindow { get; set; }
+        private System.Windows.Window ActiveOwner => OwnerWindow != null && OwnerWindow.IsLoaded ? OwnerWindow : null;
 
         private readonly SheetGroupingService _groupingService = new SheetGroupingService();
 
@@ -123,19 +128,19 @@ namespace EliteSheets.ExternalEvents
                     }
                     else if (!string.IsNullOrEmpty(failMsg))
                     {
-                        postErrors.Add($"Sheet {sheet.SheetNumber}: {failMsg}");
+                        postErrors.Add(Loc.Format("SheetError", sheet.SheetNumber, failMsg));
                     }
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"DWG export failed for {sheet.Name}: {ex.Message}");
-                    postErrors.Add($"Sheet {sheet.SheetNumber}: {ex.Message}");
+                    postErrors.Add(Loc.Format("SheetError", sheet.SheetNumber, ex.Message));
                 }
             }
 
             if (postErrors.Count > 0)
             {
-                TaskDialog.Show("DWG Export Errors", string.Join("\n", postErrors));
+                ShowMessage(Loc.Get("DwgExportErrorsTitle"), string.Join("\n", postErrors), ThemedDialogKind.Error);
             }
 
             return success;
@@ -256,9 +261,7 @@ namespace EliteSheets.ExternalEvents
 
             if (string.IsNullOrWhiteSpace(templatePath) || !File.Exists(templatePath))
             {
-                TaskDialog.Show("DXF eksport merge",
-                    "Mallifaili (DXF) asukoht ei ole seadistatud või faili ei leitud. " +
-                    "Ava EliteSheets aken ja vali mall seadetes.");
+                ShowMessage(Loc.Get("DxfMergeTitle"), Loc.Get("TemplateMissing"), ThemedDialogKind.Warning);
                 return false;
             }
 
@@ -269,6 +272,13 @@ namespace EliteSheets.ExternalEvents
             var dxfExporter = new EliteSheets.Services.DxfExportService();
             var promoter = new EliteSheets.Services.DxfPaperToModelPromoter();
             var merger = new EliteSheets.Services.DxfMergeService();
+
+            // When converting, merged DXFs go to a temp folder and ODA writes the DWGs to CadFolder
+            string odaPath = ConvertMergedToDwg ? OdaConverterService.FindConverter() : null;
+            if (ConvertMergedToDwg && odaPath == null)
+                postErrors.Add(Loc.Get("OdaMissingSavedDxf"));
+            string mergedFolder = odaPath != null ? Path.Combine(tempRoot, "_merged") : CadFolder;
+            if (odaPath != null) Directory.CreateDirectory(mergedFolder);
 
             try
             {
@@ -303,13 +313,13 @@ namespace EliteSheets.ExternalEvents
                                 if (!string.IsNullOrEmpty(p) && File.Exists(p))
                                     sourcePaths.Add(p);
                                 else
-                                    postErrors.Add($"DXF for sheet '{s.SheetNumber}' not found for merging.");
+                                    postErrors.Add(Loc.Format("DxfNotFoundForMerge", s.SheetNumber));
                             }
 
                             if (sourcePaths.Count == 0) continue;
 
                             string combinedName = _groupingService.BuildCombinedFileName(orderedSheets.First().SheetNumber, groupNumber);
-                            string outPath = Path.Combine(CadFolder, combinedName + ".dxf");
+                            string outPath = Path.Combine(mergedFolder, combinedName + ".dxf");
 
                             try
                             {
@@ -325,7 +335,7 @@ namespace EliteSheets.ExternalEvents
                             }
                             catch(Exception ex)
                             {
-                                postErrors.Add($"Merge failed for group {groupNumber}: {ex.Message}");
+                                postErrors.Add(Loc.Format("MergeFailed", groupNumber, ex.Message));
                             }
                         }
                     }
@@ -334,6 +344,9 @@ namespace EliteSheets.ExternalEvents
                         Debug.WriteLine($"DXF export content failed: {failMsg}");
                     }
                 }
+
+                if (odaPath != null)
+                    ConvertMergedDxfsToDwg(odaPath, mergedFolder, postErrors);
             }
             finally
             {
@@ -342,10 +355,41 @@ namespace EliteSheets.ExternalEvents
 
             if (postErrors.Count > 0)
             {
-                TaskDialog.Show("DXF Merge Errors", string.Join("\n", postErrors));
+                ShowMessage(Loc.Get("DxfMergeErrorsTitle"), string.Join("\n", postErrors), ThemedDialogKind.Error);
             }
 
             return success;
+        }
+
+        /// <summary>
+        /// Converts merged DXFs to DWG in CadFolder. Any file that fails to convert is copied as DXF instead.
+        /// </summary>
+        private void ConvertMergedDxfsToDwg(string odaPath, string mergedFolder, List<string> postErrors)
+        {
+            var dxfs = Directory.GetFiles(mergedFolder, "*.dxf", SearchOption.TopDirectoryOnly);
+            if (dxfs.Length == 0) return;
+
+            var converter = new OdaConverterService();
+            if (!converter.ConvertFolder(odaPath, mergedFolder, CadFolder, out string odaError))
+                postErrors.Add(Loc.Format("DwgConversionFailed", odaError));
+
+            foreach (var dxf in dxfs)
+            {
+                string dwg = Path.Combine(CadFolder, Path.GetFileNameWithoutExtension(dxf) + ".dwg");
+                if (File.Exists(dwg) && File.GetLastWriteTimeUtc(dwg) >= File.GetLastWriteTimeUtc(dxf))
+                    continue;
+
+                // Fall back to delivering the DXF so the merged drawing isn't lost
+                try
+                {
+                    File.Copy(dxf, Path.Combine(CadFolder, Path.GetFileName(dxf)), true);
+                    postErrors.Add(Loc.Format("NotConvertedSavedDxf", Path.GetFileName(dxf)));
+                }
+                catch (Exception ex)
+                {
+                    postErrors.Add($"{Path.GetFileName(dxf)}: {ex.Message}");
+                }
+            }
         }
 
         private string FindDxfForSheet(ViewSheet sheet, string folder)
@@ -372,13 +416,16 @@ namespace EliteSheets.ExternalEvents
         {
             if (anySuccess)
             {
-                TaskDialogResult result = TaskDialog.Show(
-                    "Export lõppenud.",
-                    "Export lõppenud.\n\nAvada ekspordi kaust?",
-                    TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                    TaskDialogResult.No);
+                bool openFolder = ActiveOwner != null
+                    ? ThemedMessageDialog.AskYesNo(ActiveOwner, Loc.Get("ExportDoneTitle"),
+                        Loc.Get("ExportDoneMessage"), ThemedDialogKind.Success)
+                    : TaskDialog.Show(
+                        Loc.Get("ExportDoneTitle"),
+                        Loc.Get("ExportDoneMessage"),
+                        TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
+                        TaskDialogResult.No) == TaskDialogResult.Yes;
 
-                if (result == TaskDialogResult.Yes)
+                if (openFolder)
                 {
                     foreach (var folder in GetUsedFolders())
                     {
@@ -393,8 +440,19 @@ namespace EliteSheets.ExternalEvents
             }
             else
             {
-                TaskDialog.Show("EliteSheets - Export Failed", "Export failed for all selected sheets.");
+                ShowMessage(Loc.Get("ExportFailedTitle"), Loc.Get("ExportFailed"), ThemedDialogKind.Error);
             }
+        }
+
+        /// <summary>
+        /// Shows a themed dialog on top of the plugin window, or a Revit TaskDialog when no window is attached.
+        /// </summary>
+        private void ShowMessage(string title, string message, ThemedDialogKind kind)
+        {
+            if (ActiveOwner != null)
+                ThemedMessageDialog.Show(ActiveOwner, title, message, kind);
+            else
+                TaskDialog.Show(title, message);
         }
 
         private IEnumerable<string> GetUsedFolders()

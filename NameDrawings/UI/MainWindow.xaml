@@ -1,11 +1,12 @@
-<Window
+﻿<Window
     x:Class="EliteSheets.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="clr-namespace:EliteSheets.Helpers"
     xmlns:local="clr-namespace:EliteSheets"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     x:Name="Root"
-    Title="Jooniste printimine"
+    Title="{helpers:Tr AppTitle}"
     Width="1040"
     Height="720"
     MinWidth="880"
@@ -61,7 +62,7 @@
             <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Tag" Value="No folder chosen" />
+            <Setter Property="Tag" Value="{Binding [NoFolderChosen], Source={x:Static helpers:LocSource.Instance}}" />
             <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
             <Style.Triggers>
                 <Trigger Property="Text" Value="">
@@ -115,28 +116,41 @@
                 VerticalAlignment="Top"
                 DockPanel.Dock="Right"
                 Orientation="Horizontal">
+                <!--  App tools share the caption buttons' size and row, so the whole group lines up  -->
                 <Button
-                    x:Name="ThemeButton"
-                    Width="32"
-                    Height="32"
-                    Margin="0,10,8,0"
-                    VerticalAlignment="Top"
-                    AutomationProperties.Name="Switch between dark and light appearance"
-                    Click="ToggleTheme_Click"
-                    Style="{StaticResource Button.Icon}"
-                    ToolTip="Switch between dark and light appearance"
-                    WindowChrome.IsHitTestVisibleInChrome="True">
-                    <materialDesign:PackIcon
-                        x:Name="ThemeIcon"
-                        Width="17"
-                        Height="17"
-                        Kind="WeatherNight" />
+                    x:Name="LanguageButton"
+                    AutomationProperties.Name="{helpers:Tr SwitchLanguage}"
+                    Click="LanguageToggle_Click"
+                    Style="{StaticResource CaptionButton}"
+                    ToolTip="{helpers:Tr SwitchLanguage}">
+                    <TextBlock
+                        FontSize="{StaticResource FontSize.Secondary}"
+                        FontWeight="SemiBold"
+                        Text="{helpers:Tr LanguageShort}" />
                 </Button>
                 <Button
-                    AutomationProperties.Name="Minimize"
+                    x:Name="ThemeButton"
+                    AutomationProperties.Name="{helpers:Tr ToggleTheme}"
+                    Click="ToggleTheme_Click"
+                    Style="{StaticResource CaptionButton}"
+                    ToolTip="{helpers:Tr ToggleTheme}">
+                    <materialDesign:PackIcon
+                        x:Name="ThemeIcon"
+                        Width="15"
+                        Height="15"
+                        Kind="WeatherNight" />
+                </Button>
+                <Border
+                    Width="1"
+                    Height="16"
+                    Margin="4,10,4,0"
+                    VerticalAlignment="Top"
+                    Background="{DynamicResource Separator}" />
+                <Button
+                    AutomationProperties.Name="{helpers:Tr Minimize}"
                     Click="Minimize_Click"
                     Style="{StaticResource CaptionButton}"
-                    ToolTip="Minimize">
+                    ToolTip="{helpers:Tr Minimize}">
                     <materialDesign:PackIcon
                         Width="14"
                         Height="14"
@@ -144,10 +158,10 @@
                 </Button>
                 <Button
                     x:Name="MaximizeButton"
-                    AutomationProperties.Name="Maximize"
+                    AutomationProperties.Name="{helpers:Tr Maximize}"
                     Click="Maximize_Click"
                     Style="{StaticResource CaptionButton}"
-                    ToolTip="Maximize">
+                    ToolTip="{helpers:Tr Maximize}">
                     <materialDesign:PackIcon
                         x:Name="MaximizeIcon"
                         Width="14"
@@ -155,10 +169,10 @@
                         Kind="WindowMaximize" />
                 </Button>
                 <Button
-                    AutomationProperties.Name="Close"
+                    AutomationProperties.Name="{helpers:Tr CloseWindow}"
                     Click="Close_Click"
                     Style="{StaticResource CaptionCloseButton}"
-                    ToolTip="Close">
+                    ToolTip="{helpers:Tr Close}">
                     <materialDesign:PackIcon
                         Width="14"
                         Height="14"
@@ -174,7 +188,7 @@
                 <TextBlock
                     VerticalAlignment="Center"
                     Style="{StaticResource Type.Section}"
-                    Text="Jooniste printimine" />
+                    Text="{helpers:Tr AppTitle}" />
                 <TextBlock
                     x:Name="ProjectText"
                     MaxWidth="360"
@@ -199,21 +213,21 @@
                 <Grid Width="300">
                     <TextBox
                         x:Name="SheetSearchTextBox"
-                        AutomationProperties.Name="Search sheets"
+                        AutomationProperties.Name="{helpers:Tr SearchSheets}"
                         Style="{StaticResource Input.Search}"
-                        Tag="Search number, name or version"
+                        Tag="{helpers:Tr SearchHint}"
                         TextChanged="SheetSearchTextBox_TextChanged"
-                        ToolTip="Search sheets by number, name, version or view (Ctrl+F)" />
+                        ToolTip="{helpers:Tr SearchTooltipShortcut}" />
                     <Button
                         x:Name="ClearSearchButton"
                         Width="24"
                         Height="24"
                         Margin="0,0,4,0"
                         HorizontalAlignment="Right"
-                        AutomationProperties.Name="Clear search"
+                        AutomationProperties.Name="{helpers:Tr ClearSearch}"
                         Click="ClearSearchButton_Click"
                         Style="{StaticResource Button.Icon}"
-                        ToolTip="Clear search (Esc)"
+                        ToolTip="{helpers:Tr ClearSearchShortcut}"
                         Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVis}}">
                         <materialDesign:PackIcon
                             Width="14"
@@ -226,10 +240,10 @@
                     Width="32"
                     Height="32"
                     Margin="8,0,0,0"
-                    AutomationProperties.Name="Reload sheets"
+                    AutomationProperties.Name="{helpers:Tr ReloadSheets}"
                     Click="ReloadButton_Click"
                     Style="{StaticResource Button.Icon}"
-                    ToolTip="Reload sheets and DWG setups from the model">
+                    ToolTip="{helpers:Tr ReloadTooltip}">
                     <materialDesign:PackIcon
                         Width="17"
                         Height="17"
@@ -260,11 +274,11 @@
                                     <CheckBox
                                         x:Name="CheckAllBox"
                                         HorizontalAlignment="Center"
-                                        AutomationProperties.Name="Select all visible sheets"
+                                        AutomationProperties.Name="{helpers:Tr SelectAllSheets}"
                                         Click="CheckAllBox_Click"
                                         Loaded="CheckAllBox_Loaded"
                                         Style="{StaticResource Input.Check}"
-                                        ToolTip="Select or clear all visible sheets" />
+                                        ToolTip="{helpers:Tr SelectAllVisible}" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.HeaderTemplate>
                             <DataGridTemplateColumn.CellTemplate>
@@ -275,7 +289,7 @@
                                         IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Style="{StaticResource Input.Check}">
                                         <AutomationProperties.Name>
-                                            <MultiBinding StringFormat="Select sheet {0} - {1}">
+                                            <MultiBinding StringFormat="{helpers:Tr SelectSheetFormat}">
                                                 <Binding Path="Number" />
                                                 <Binding Path="Name" />
                                             </MultiBinding>
@@ -289,19 +303,19 @@
                             MinWidth="100"
                             Binding="{Binding Number}"
                             ElementStyle="{StaticResource CellText.Number}"
-                            Header="Joonise number" />
+                            Header="{helpers:Tr ColSheetNumber}" />
                         <DataGridTextColumn
                             Width="*"
                             MinWidth="160"
                             Binding="{Binding Name}"
                             ElementStyle="{StaticResource CellText}"
-                            Header="Joonise nimi" />
+                            Header="{helpers:Tr ColSheetName}" />
                         <DataGridTextColumn
                             Width="96"
                             MinWidth="72"
                             Binding="{Binding Version}"
                             ElementStyle="{StaticResource CellText.Secondary}"
-                            Header="Versioon" />
+                            Header="{helpers:Tr ColVersion}" />
                     </DataGrid.Columns>
                 </DataGrid>
 
@@ -323,8 +337,7 @@
                     <TextBlock
                         x:Name="EmptyTitle"
                         HorizontalAlignment="Center"
-                        Style="{StaticResource Type.Heading}"
-                        Text="No matching sheets" />
+                        Style="{StaticResource Type.Heading}" />
                     <TextBlock
                         x:Name="EmptyDetail"
                         MaxWidth="320"
@@ -336,7 +349,7 @@
                         x:Name="EmptyClearButton"
                         HorizontalAlignment="Center"
                         Click="ClearSearchButton_Click"
-                        Content="Clear search"
+                        Content="{helpers:Tr ClearSearch}"
                         Style="{StaticResource Button.Plain}" />
                 </StackPanel>
             </Grid>
@@ -358,25 +371,25 @@
 
                 <!--  Formats  -->
                 <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                    <TextBlock Style="{StaticResource BarLabel}" Text="Format" />
+                    <TextBlock Style="{StaticResource BarLabel}" Text="{helpers:Tr FormatLabel}" />
                     <StackPanel Orientation="Horizontal">
                         <CheckBox
                             x:Name="PdfExportCheckbox"
                             Margin="0,0,8,0"
-                            AutomationProperties.Name="Export to PDF"
+                            AutomationProperties.Name="{helpers:Tr ExportToPdf}"
                             Click="FormatCheckbox_Click"
                             Content="PDF"
                             IsChecked="True"
                             Style="{StaticResource Toggle.Chip}"
-                            ToolTip="Export selected sheets as PDF" />
+                            ToolTip="{helpers:Tr ExportPdfChip}" />
                         <CheckBox
                             x:Name="DwgExportCheckbox"
-                            AutomationProperties.Name="Export to DWG"
+                            AutomationProperties.Name="{helpers:Tr ExportToDwg}"
                             Click="FormatCheckbox_Click"
                             Content="DWG"
                             IsChecked="True"
                             Style="{StaticResource Toggle.Chip}"
-                            ToolTip="Export selected sheets as DWG" />
+                            ToolTip="{helpers:Tr ExportDwgChip}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -388,14 +401,26 @@
                     <TextBlock
                         x:Name="DwgExportSettingsLabel"
                         Style="{StaticResource BarLabel}"
-                        Text="DWG setup" />
+                        Text="{helpers:Tr DwgSetupLabel}" />
                     <ComboBox
                         x:Name="DwgExportComboBox"
-                        Width="190"
+                        MinWidth="190"
                         AutomationProperties.LabeledBy="{Binding ElementName=DwgExportSettingsLabel}"
                         DisplayMemberPath="Name"
                         Style="{StaticResource Input.Combo}"
-                        ToolTip="DWG export setup defined in the Revit project" />
+                        ToolTip="{helpers:Tr DwgSetupTooltip}" />
+                    <!--  Merged DXF drawings are produced by the DWG export, so the ODA option lives with it  -->
+                    <CheckBox
+                        x:Name="ConvertMergedToDwgCheckbox"
+                        Margin="0,8,0,0"
+                        AutomationProperties.Name="{helpers:Tr MergedAsDwgName}"
+                        Click="ConvertMergedToDwgCheckbox_Click"
+                        FontSize="{StaticResource FontSize.Secondary}"
+                        Foreground="{DynamicResource Text.Secondary}"
+                        Style="{StaticResource Input.Check}"
+                        ToolTip="{helpers:Tr MergedAsDwgTooltip}">
+                        <TextBlock Text="{helpers:Tr MergedAsDwg}" />
+                    </CheckBox>
                 </StackPanel>
 
                 <!--  Destination  -->
@@ -405,15 +430,15 @@
                             x:Name="SeparateFoldersCheckbox"
                             Margin="12,0,0,6"
                             VerticalAlignment="Top"
-                            AutomationProperties.Name="Use separate folders for PDF and DWG"
+                            AutomationProperties.Name="{helpers:Tr SeparateFoldersName}"
                             Click="SeparateFoldersCheckbox_Click"
-                            Content="Separate folders"
+                            Content="{helpers:Tr SeparateFoldersShort}"
                             DockPanel.Dock="Right"
                             FontSize="{StaticResource FontSize.Secondary}"
                             Foreground="{DynamicResource Text.Secondary}"
                             Style="{StaticResource Input.Check}"
-                            ToolTip="Export PDF and DWG files to different folders" />
-                        <TextBlock Style="{StaticResource BarLabel}" Text="Destination" />
+                            ToolTip="{helpers:Tr SeparateFoldersTooltip}" />
+                        <TextBlock Style="{StaticResource BarLabel}" Text="{helpers:Tr DestinationLabel}" />
                     </DockPanel>
 
                     <!--  One folder  -->
@@ -421,18 +446,18 @@
                         <Button
                             x:Name="BrowseButton"
                             Margin="8,0,0,0"
-                            AutomationProperties.Name="Choose export folder"
+                            AutomationProperties.Name="{helpers:Tr BrowseExportFolder}"
                             Click="BrowseButton_Click"
-                            Content="Choose…"
+                            Content="{helpers:Tr Choose}"
                             DockPanel.Dock="Right"
                             Style="{StaticResource Button.Secondary}"
-                            ToolTip="Choose the folder for exported files" />
+                            ToolTip="{helpers:Tr BrowseExportFolderTooltip}" />
                         <Border Style="{StaticResource PathWell}">
                             <DockPanel>
                                 <materialDesign:PackIcon Kind="FolderOutline" Style="{StaticResource PathGlyph}" />
                                 <TextBox
                                     x:Name="ExportPathTextBox"
-                                    AutomationProperties.Name="Export folder"
+                                    AutomationProperties.Name="{helpers:Tr ExportPath}"
                                     Style="{StaticResource PathValue}" />
                             </DockPanel>
                         </Border>
@@ -447,12 +472,12 @@
                             <Button
                                 x:Name="BrowsePdfButton"
                                 Margin="8,0,0,0"
-                                AutomationProperties.Name="Choose PDF export folder"
+                                AutomationProperties.Name="{helpers:Tr BrowsePdfFolder}"
                                 Click="BrowsePdfButton_Click"
-                                Content="Choose…"
+                                Content="{helpers:Tr Choose}"
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource Button.Secondary}"
-                                ToolTip="Choose the folder for exported PDF files" />
+                                ToolTip="{helpers:Tr BrowsePdfFolderTooltip}" />
                             <Border Style="{StaticResource PathWell}">
                                 <DockPanel>
                                     <Border
@@ -462,7 +487,7 @@
                                     </Border>
                                     <TextBox
                                         x:Name="PdfExportPathTextBox"
-                                        AutomationProperties.Name="PDF export folder"
+                                        AutomationProperties.Name="{helpers:Tr PdfExportPath}"
                                         Style="{StaticResource PathValue}" />
                                 </DockPanel>
                             </Border>
@@ -471,12 +496,12 @@
                             <Button
                                 x:Name="BrowseDwgButton"
                                 Margin="8,0,0,0"
-                                AutomationProperties.Name="Choose DWG export folder"
+                                AutomationProperties.Name="{helpers:Tr BrowseDwgFolder}"
                                 Click="BrowseDwgButton_Click"
-                                Content="Choose…"
+                                Content="{helpers:Tr Choose}"
                                 DockPanel.Dock="Right"
                                 Style="{StaticResource Button.Secondary}"
-                                ToolTip="Choose the folder for exported DWG files" />
+                                ToolTip="{helpers:Tr BrowseDwgFolderTooltip}" />
                             <Border Style="{StaticResource PathWell}">
                                 <DockPanel>
                                     <Border
@@ -486,7 +511,7 @@
                                     </Border>
                                     <TextBox
                                         x:Name="DwgExportPathTextBox"
-                                        AutomationProperties.Name="DWG export folder"
+                                        AutomationProperties.Name="{helpers:Tr DwgExportPath}"
                                         Style="{StaticResource PathValue}" />
                                 </DockPanel>
                             </Border>
@@ -502,11 +527,11 @@
                     MinWidth="150"
                     Padding="18,0"
                     VerticalAlignment="Bottom"
-                    AutomationProperties.Name="Print and export selected sheets"
+                    AutomationProperties.Name="{helpers:Tr PrintTooltip}"
                     Click="PrintButton_Click"
                     IsDefault="False"
                     Style="{StaticResource Button.Primary}"
-                    ToolTip="Print and export the selected sheets (Ctrl+Enter)">
+                    ToolTip="{helpers:Tr PrintShortcutTooltip}">
                     <StackPanel Orientation="Horizontal">
                         <materialDesign:PackIcon Kind="PrinterOutline" Style="{StaticResource ButtonIconLabel}" />
                         <TextBlock x:Name="PrintButtonText" Text="Print" />

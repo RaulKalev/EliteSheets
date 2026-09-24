@@ -2,6 +2,7 @@
 using Autodesk.Revit.UI;
 using EliteSheets.ExternalEvents;
 using EliteSheets.Helpers;
+using EliteSheets.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -52,7 +53,7 @@ public class CreatePrintSettingHandler : IExternalEventHandler
         }
         catch (Exception ex)
         {
-            TaskDialog.Show("Print Error", $"Failed to apply print settings:\n{ex.Message}");
+            TaskDialog.Show(Loc.Get("PrintErrorTitle"), Loc.Format("PrintSettingsError", ex.Message));
         }
 
         OnCompleted?.Invoke();

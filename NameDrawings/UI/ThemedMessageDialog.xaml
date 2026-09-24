@@ -1,0 +1,88 @@
+<Window
+    x:Class="EliteSheets.ThemedMessageDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="clr-namespace:EliteSheets.Helpers"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Width="452"
+    AllowsTransparency="True"
+    Background="Transparent"
+    ResizeMode="NoResize"
+    ShowInTaskbar="False"
+    SizeToContent="Height"
+    TextOptions.TextFormattingMode="Display"
+    UseLayoutRounding="True"
+    WindowStartupLocation="CenterOwner"
+    WindowStyle="None">
+    <!--
+        Alert in the plugin's design language: one floating surface (the margin leaves room for its shadow),
+        status glyph + title + message, actions bottom-right with the default action as the primary button.
+        The owner's palette and the shared styles are merged in by the constructor (see ThemeResources).
+    -->
+    <Border
+        x:Name="Surface"
+        Margin="16"
+        Padding="20,18,20,16"
+        MouseLeftButtonDown="Surface_MouseLeftButtonDown"
+        Style="{StaticResource Floating}"
+        TextElement.FontFamily="{StaticResource Font.Text}"
+        TextElement.FontSize="{StaticResource FontSize.Body}"
+        TextElement.Foreground="{DynamicResource Text.Primary}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <DockPanel>
+                <materialDesign:PackIcon
+                    x:Name="DialogIcon"
+                    Width="24"
+                    Height="24"
+                    Margin="0,0,14,0"
+                    VerticalAlignment="Top"
+                    DockPanel.Dock="Left"
+                    Kind="AlertCircleOutline" />
+                <StackPanel>
+                    <TextBlock
+                        x:Name="TitleText"
+                        Margin="0,2,0,6"
+                        Style="{StaticResource Type.Section}"
+                        TextWrapping="Wrap" />
+                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                        <TextBlock
+                            x:Name="MessageText"
+                            Foreground="{DynamicResource Text.Secondary}"
+                            LineHeight="19"
+                            TextWrapping="Wrap" />
+                    </ScrollViewer>
+                </StackPanel>
+            </DockPanel>
+
+            <StackPanel
+                Grid.Row="1"
+                Margin="0,20,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <Button
+                    x:Name="OkButton"
+                    MinWidth="88"
+                    AutomationProperties.Name="{helpers:Tr CloseDialog}"
+                    Click="OkButton_Click"
+                    Content="{helpers:Tr Ok}"
+                    IsCancel="True"
+                    IsDefault="True"
+                    Style="{StaticResource Button.Primary}" />
+                <Button
+                    x:Name="YesButton"
+                    MinWidth="88"
+                    Margin="8,0,0,0"
+                    AutomationProperties.Name="{helpers:Tr Yes}"
+                    Click="YesButton_Click"
+                    Content="{helpers:Tr Yes}"
+                    Style="{StaticResource Button.Primary}"
+                    Visibility="Collapsed" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

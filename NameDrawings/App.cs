@@ -1,4 +1,4 @@
-﻿using Autodesk.Revit.UI;
+using Autodesk.Revit.UI;
 using ricaun.Revit.UI;
 using System;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using System.IO;
 using System.Windows;
 using Newtonsoft.Json;
 using EliteSheets.Commands;
+using EliteSheets.Services;
 
 namespace EliteSheets
 {
@@ -33,11 +34,14 @@ namespace EliteSheets
             // Create Ribbon Panel on the custom tab
             ribbonPanel = application.CreateOrSelectPanel(tabName, "Tools");
 
+            // Ribbon text follows the saved language (Estonian until one is chosen)
+            Loc.Load();
+
             // Create PushButton with embedded resource
             ribbonPanel.CreatePushButton<MainCommand>()
                 .SetLargeImage("Assets/EliteSheets.tiff")
-                .SetText("Jooniste\nPrintimine")
-                .SetToolTip("Jooniste printimine.")
+                .SetText(Loc.Get("RibbonText"))
+                .SetToolTip(Loc.Get("RibbonTooltip"))
                 .SetContextualHelp("https://raulkalev.github.io/rktools/");
 
             return Result.Succeeded;
